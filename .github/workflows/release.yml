@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*' # 当推送 v 开头的标签时触发
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          toolchain: stable
+          profile: minimal
+          override: true
+          components: rustfmt, clippy
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_APP_TITLE: Font Viewer
+        with:
+          tagName: app-v__VERSION__
+          releaseName: 'App v__VERSION__'
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: true
+          prerelease: false
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: font-viewer-windows
+          path: |
+            src-tauri/target/release/*.exe
+            src-tauri/target/release/*.dll
+            src-tauri/target/release/*.rlib
+            src-tauri/target/release/*.pdb 
