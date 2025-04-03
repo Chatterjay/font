@@ -80,16 +80,16 @@ const toggleLayout = () => {
 // 获取系统字体
 const getSystemFonts = async () => {
   try {
-    const result = await invoke('get_system_fonts');
-    fonts.value = result.map(font => ({
+    const result = await invoke("get_system_fonts");
+    fonts.value = result.map((font) => ({
       name: font.name,
       family: font.family,
       style: font.style,
-      path: font.path
+      path: font.path,
     }));
     loading.value = false;
   } catch (error) {
-    console.error('获取系统字体失败:', error);
+    console.error("获取系统字体失败:", error);
     loading.value = false;
   }
 };
@@ -159,7 +159,11 @@ onMounted(() => {
           <p class="description">一个简单易用的系统字体预览工具</p>
         </div>
         <div class="footer-links">
-          <a href="https://github.com/Chatterjay" target="_blank" class="footer-link">
+          <a
+            href="https://github.com/Chatterjay/font-viewer"
+            target="_blank"
+            class="footer-link"
+          >
             <svg viewBox="0 0 24 24" width="20" height="20">
               <path
                 fill="currentColor"
@@ -175,7 +179,7 @@ onMounted(() => {
 </template>
 
 <style>
-@import './styles/variables.css';
+@import "./styles/variables.css";
 
 body {
   background-color: var(--background-color);

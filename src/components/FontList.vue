@@ -499,7 +499,7 @@ onMounted(() => {
 }
 
 .font-list-container.side-by-side {
-  max-height: 870px;
+  max-height: calc(100vh - 148px);
 }
 
 .font-list-header {
@@ -1001,6 +1001,8 @@ onMounted(() => {
   background-color: var(--background-tertiary);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
+  position: relative;
+  overflow: visible;
 }
 
 .font-card.current-preview::before {
@@ -1016,5 +1018,193 @@ onMounted(() => {
   font-size: 12px;
   white-space: nowrap;
   z-index: 1;
+  animation: previewBadgePop 0.3s ease-out;
+}
+
+.font-card.current-preview::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border: 2px solid var(--primary-color);
+  border-radius: var(--radius-lg);
+  pointer-events: none;
+  animation: previewBorderPulse 2s ease-in-out infinite;
+}
+
+@keyframes previewBadgePop {
+  0% {
+    transform: translateX(-50%) scale(0.8);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes previewBorderPulse {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
+
+.font-card.current-preview .font-name {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.font-card.current-preview .font-sample {
+  color: var(--text-primary);
+}
+
+.font-card.current-preview .weight-toggle {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.font-card.current-preview .weight-toggle:hover {
+  background-color: var(--primary-hover);
+}
+
+.font-card.current-preview .action-btn {
+  background-color: var(--background-primary);
+  border-color: var(--primary-color);
+}
+
+.font-card.current-preview .action-btn:hover {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.font-card.current-preview .action-btn svg {
+  color: var(--primary-color);
+}
+
+.font-card.current-preview .action-btn:hover svg {
+  color: white;
+}
+
+.font-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: var(--transition-normal);
+  position: relative;
+  overflow: hidden;
+}
+
+.font-item:hover {
+  background-color: var(--background-hover);
+}
+
+.font-item.selected {
+  background-color: var(--background-active);
+  transform: translateX(var(--spacing-sm));
+}
+
+.font-item.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: linear-gradient(to bottom, var(--primary-color), var(--accent-color));
+  animation: selectedIndicator 2s ease-in-out infinite;
+}
+
+.font-item.selected::after {
+  content: '✓';
+  position: absolute;
+  right: var(--spacing-md);
+  color: var(--primary-color);
+  font-weight: bold;
+  animation: checkmarkAppear 0.3s ease-out forwards;
+  opacity: 0;
+  transform: scale(0.8);
+}
+
+@keyframes selectedIndicator {
+  0%, 100% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes checkmarkAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateX(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+  }
+}
+
+.font-item .font-name {
+  flex: 1;
+  font-weight: 500;
+  color: var(--text-primary);
+  transition: var(--transition-fast);
+}
+
+.font-item.selected .font-name {
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.font-item .font-style {
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  transition: var(--transition-fast);
+}
+
+.font-item.selected .font-style {
+  color: var(--accent-color);
+}
+
+/* 添加选中时的阴影效果 */
+.font-item.selected {
+  box-shadow: 0 2px 8px rgba(var(--primary-rgb), 0.15);
+}
+
+/* 添加悬停时的过渡效果 */
+.font-item {
+  transform: translateX(0);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.font-item:hover {
+  transform: translateX(var(--spacing-xs));
+}
+
+/* 添加选中时的字体大小变化 */
+.font-item.selected .font-name {
+  font-size: calc(var(--font-size-base) * 1.05);
+}
+
+/* 添加选中时的背景渐变效果 */
+.font-item.selected {
+  background: linear-gradient(
+    to right,
+    var(--background-active),
+    var(--background-hover)
+  );
 }
 </style>
+
