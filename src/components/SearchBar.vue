@@ -52,22 +52,29 @@ const clearSearch = () => {
   position: relative;
   display: flex;
   align-items: center;
-  background-color: var(--background-primary);
+  background-color: var(--background-secondary);
   border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   padding: var(--spacing-sm) var(--spacing-md);
-  transition: var(--transition-normal);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: var(--shadow-sm);
 }
 
 .search-input-wrapper:focus-within {
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 4px 10px rgba(var(--primary-rgb), 0.1);
+  transform: translateY(-2px);
+  background-color: var(--background-primary);
 }
 
 .search-icon {
-  color: var(--text-tertiary);
-  margin-right: var(--spacing-sm);
+  color: var(--primary-color);
+  margin-right: var(--spacing-md);
+  transition: all var(--transition-fast);
+}
+
+.search-input-wrapper:focus-within .search-icon {
+  transform: scale(1.1);
 }
 
 .search-input {
@@ -75,12 +82,12 @@ const clearSearch = () => {
   border: none;
   background: none;
   padding: var(--spacing-sm) var(--spacing-sm) var(--spacing-sm) 0;
-  font-size: 1rem;
+  font-size: 1.1rem;
   color: var(--text-primary);
 }
 
 .search-input::placeholder {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .search-input:focus {
@@ -89,18 +96,21 @@ const clearSearch = () => {
 }
 
 .clear-btn {
-  padding: var(--spacing-xs);
-  border-radius: var(--radius-sm);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   color: var(--text-tertiary);
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: var(--transition-fast);
+  transition: all var(--transition-fast);
+  background-color: var(--background-tertiary);
 }
 
 .clear-btn:hover {
-  color: var(--text-secondary);
-  background-color: var(--background-tertiary);
+  color: var(--text-primary);
+  background-color: var(--background-active);
+  transform: scale(1.1);
 }
 
 @media (max-width: 870px) {

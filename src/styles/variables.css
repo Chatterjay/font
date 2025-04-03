@@ -1,16 +1,28 @@
 :root {
     /* 颜色系统 */
-    --primary-color: #646cff;
-    --primary-hover: #535bf2;
+    --primary-color: #4f46e5;
+    --primary-hover: #4338ca;
+    --primary-rgb: 79, 70, 229;
+    --accent-color: #8b5cf6;
+    --accent-rgb: 139, 92, 246;
+    --background-active: rgba(79, 70, 229, 0.1);
+    --background-hover: rgba(79, 70, 229, 0.05);
     --secondary-color: #535bf2;
-    --background-color: #f8f9fa;
+    --secondary-rgb: 83, 91, 242;
+    --success-color: #10b981;
+    --success-rgb: 16, 185, 129;
+    --warning-color: #f59e0b;
+    --warning-rgb: 245, 158, 11;
+    --danger-color: #ef4444;
+    --danger-rgb: 239, 68, 68;
+    --background-color: #f3f4f6;
     --background-primary: #ffffff;
-    --background-secondary: #f8f9fa;
-    --background-tertiary: #f1f3f5;
+    --background-secondary: #e5e7eb;
+    --background-tertiary: #d1d5db;
     --card-background: #ffffff;
     --border-color: #e0e0e0;
-    --text-primary: #333333;
-    --text-secondary: #666666;
+    --text-primary: #111827;
+    --text-secondary: #6b7280;
     --text-tertiary: #999999;
 
     /* 文本选择颜色 */
@@ -19,14 +31,15 @@
 
     /* 阴影系统 */
     --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.05);
-    --shadow-md: 0 4px 15px rgba(0, 0, 0, 0.08);
-    --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.12);
+    --shadow-md: 0 4px 15px rgba(0, 0, 0, 0.1);
+    --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.15);
 
     /* 圆角系统 */
     --radius-sm: 4px;
     --radius-md: 8px;
     --radius-lg: 12px;
     --radius-xl: 16px;
+    --radius-full: 9999px;
 
     /* 间距系统 */
     --spacing-xs: 4px;
@@ -67,6 +80,11 @@
     --text-primary: #ffffff;
     --text-secondary: #cccccc;
     --text-tertiary: #999999;
+    --primary-rgb: 79, 70, 229;
+    --accent-rgb: 139, 92, 246;
+    --success-rgb: 16, 185, 129;
+    --warning-rgb: 245, 158, 11;
+    --danger-rgb: 239, 68, 68;
     --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.2);
     --shadow-md: 0 4px 15px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.4);
@@ -78,6 +96,15 @@
 :root[data-theme="high-contrast"] {
     --primary-color: #0000ff;
     --primary-hover: #0000cc;
+    --primary-rgb: 0, 0, 255;
+    --accent-color: #6600ff;
+    --accent-rgb: 102, 0, 255;
+    --success-color: #008000;
+    --success-rgb: 0, 128, 0;
+    --warning-color: #ff8000;
+    --warning-rgb: 255, 128, 0;
+    --danger-color: #ff0000;
+    --danger-rgb: 255, 0, 0;
     --background-color: #ffffff;
     --background-primary: #ffffff;
     --background-secondary: #f0f0f0;
@@ -98,6 +125,7 @@
 :root[data-theme="warm"] {
     --primary-color: #f97316;
     --primary-hover: #ea580c;
+    --primary-rgb: 249, 115, 22;
     --background-color: #fff7ed;
     --background-primary: #fff7ed;
     --background-secondary: #ffedd5;
@@ -118,6 +146,7 @@
 :root[data-theme="cool"] {
     --primary-color: #0ea5e9;
     --primary-hover: #0284c7;
+    --primary-rgb: 14, 165, 233;
     --background-color: #f0f9ff;
     --background-primary: #f0f9ff;
     --background-secondary: #e0f2fe;

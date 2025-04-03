@@ -6,6 +6,7 @@ import { STORAGE_KEYS, THEME_MODES } from "../constants";
 const theme = ref(THEME_MODES.LIGHT);
 const isSystemTheme = ref(false);
 const showThemeMenu = ref(false);
+const menuPosition = ref({ top: true, right: true });
 
 // 主题选项
 const themes = [
@@ -15,6 +16,32 @@ const themes = [
   { id: "warm", name: "暖色", icon: "🔥" },
   { id: "cool", name: "冷色", icon: "❄️" },
 ];
+
+// 切换主题菜单并计算位置
+const toggleThemeMenu = (event) => {
+  if (!showThemeMenu.value) {
+    calculateMenuPosition(event);
+  }
+  showThemeMenu.value = !showThemeMenu.value;
+};
+
+// 计算菜单应该显示的位置
+const calculateMenuPosition = (event) => {
+  if (!event) return;
+  
+  const button = event.currentTarget;
+  const buttonRect = button.getBoundingClientRect();
+  const menuWidth = 200; // 菜单宽度
+  const menuHeight = 200; // 预估菜单高度
+  
+  // 检查右侧是否有足够空间
+  const rightSpace = window.innerWidth - buttonRect.right;
+  menuPosition.value.right = rightSpace >= menuWidth;
+  
+  // 检查底部是否有足够空间
+  const bottomSpace = window.innerHeight - buttonRect.bottom;
+  menuPosition.value.top = bottomSpace >= menuHeight;
+};
 
 // 从localStorage加载主题设置
 const loadTheme = () => {
@@ -100,7 +127,7 @@ onUnmounted(() => {
   <div class="theme-toggle">
     <button
       class="theme-btn"
-      @click="showThemeMenu = !showThemeMenu"
+      @click="toggleThemeMenu"
       :title="'当前主题：' + themes.find((t) => t.id === theme)?.name"
       aria-label="切换主题"
     >
@@ -108,7 +135,15 @@ onUnmounted(() => {
     </button>
 
     <Transition name="slide-fade">
-      <div v-if="showThemeMenu" class="theme-menu">
+      <div v-if="showThemeMenu" 
+           class="theme-menu" 
+           :class="{
+             'top-right': menuPosition.top && menuPosition.right,
+             'top-left': menuPosition.top && !menuPosition.right,
+             'bottom-right': !menuPosition.top && menuPosition.right,
+             'bottom-left': !menuPosition.top && !menuPosition.right,
+           }"
+      >
         <div class="theme-menu-header">
           <span>选择主题</span>
           <button
@@ -173,8 +208,6 @@ onUnmounted(() => {
 
 .theme-menu {
   position: absolute;
-  top: calc(100% + var(--spacing-sm));
-  right: 0;
   background-color: var(--background-primary);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
@@ -186,7 +219,12 @@ onUnmounted(() => {
   animation: menuAppear 0.2s ease-out;
 }
 
-@keyframes menuAppear {
+/* 根据计算的位置动态设置菜单位置 */
+.theme-menu[style] {
+  transform-origin: var(--origin, top right);
+}
+
+@keyframes menuAppearTopRight {
   from {
     opacity: 0;
     transform: scale(0.95) translateY(-10px);
@@ -195,6 +233,67 @@ onUnmounted(() => {
     opacity: 1;
     transform: scale(1) translateY(0);
   }
+}
+
+@keyframes menuAppearTopLeft {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes menuAppearBottomRight {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes menuAppearBottomLeft {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.theme-menu.top-right {
+  top: calc(100% + var(--spacing-sm));
+  right: 0;
+  --origin: top right;
+  animation: menuAppearTopRight 0.2s ease-out;
+}
+
+.theme-menu.top-left {
+  top: calc(100% + var(--spacing-sm));
+  left: 0;
+  --origin: top left;
+  animation: menuAppearTopLeft 0.2s ease-out;
+}
+
+.theme-menu.bottom-right {
+  bottom: calc(100% + var(--spacing-sm));
+  right: 0;
+  --origin: bottom right;
+  animation: menuAppearBottomRight 0.2s ease-out;
+}
+
+.theme-menu.bottom-left {
+  bottom: calc(100% + var(--spacing-sm));
+  left: 0;
+  --origin: bottom left;
+  animation: menuAppearBottomLeft 0.2s ease-out;
 }
 
 .theme-menu-header {

@@ -60,7 +60,7 @@ git clone https://github.com/Chatterjay/font-viewer.git
 cd font-viewer
 ```
 
-2. 安装依赖 
+2. 安装依赖
 
 ```bash
 npm install
@@ -101,6 +101,7 @@ npm run build
 - 提供一键清理功能，可随时清除所有本地数据
 
 ## 网页示例图
+
 <img src="./src/assets/image.png">
 
 ## 📄 许可证

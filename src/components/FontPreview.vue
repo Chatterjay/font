@@ -1,6 +1,7 @@
 <script setup>
-import { ref, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 
+// 接收父组件传递的属性
 const props = defineProps({
   selectedFont: {
     type: String,
@@ -10,45 +11,136 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  isCommercial: {
+    type: Boolean,
+    default: false,
+  },
 });
 
-const emit = defineEmits(["toggle-favorite"]);
+// 向父组件发送事件
+const emit = defineEmits(["toggle-favorite", "toggle-commercial"]);
 
 // 预览文本
-const previewText = ref("请输入要预览的文字");
+const previewText = ref("你好，世界。汉字测试 AaBbCc 0123456789");
+// 自定义文本
+const customText = ref("");
 // 字体大小
-const fontSize = ref(24);
-// 是否加粗
-const isBold = ref(false);
-// 是否斜体
-const isItalic = ref(false);
-// 用于防抖的定时器ID
-const debounceTimer = ref(null);
+const fontSize = ref(36);
+// 字重
+const fontWeight = ref(400);
+// 字体样式
+const fontStyle = ref("normal");
+// 字间距
+const letterSpacing = ref(0);
+// 行高
+const lineHeight = ref(1.5);
+// 预览背景颜色
+const bgColor = ref("#ffffff");
+// 预览文本颜色
+const textColor = ref("#000000");
+// 是否可编辑
+const isEditing = ref(false);
+// 对齐方式
+const textAlign = ref("left");
 
-// 处理文本输入的防抖函数
-const handleTextInput = (event) => {
-  if (debounceTimer.value) {
-    clearTimeout(debounceTimer.value);
-  }
-
-  debounceTimer.value = setTimeout(() => {
-    previewText.value = event.target.value;
-  }, 500); // 500ms的防抖延迟
-};
-
-// 预览样式
-const previewStyle = () => {
+// 字体样式对象
+const fontStyles = computed(() => {
   return {
-    fontFamily: props.selectedFont || "Arial",
+    fontFamily: props.selectedFont || "inherit",
     fontSize: `${fontSize.value}px`,
-    fontWeight: isBold.value ? "bold" : "normal",
-    fontStyle: isItalic.value ? "italic" : "normal",
+    fontWeight: fontWeight.value,
+    fontStyle: fontStyle.value,
+    letterSpacing: `${letterSpacing.value}px`,
+    lineHeight: lineHeight.value,
+    backgroundColor: bgColor.value,
+    color: textColor.value,
+    textAlign: textAlign.value,
   };
-};
+});
 
+// 显示的文本
+const displayText = computed(() => {
+  return customText.value || previewText.value;
+});
+
+// 切换收藏状态
 const toggleFavorite = () => {
   emit("toggle-favorite", props.selectedFont);
 };
+
+// 切换商用标记
+const toggleCommercial = () => {
+  emit("toggle-commercial", props.selectedFont);
+};
+
+// 切换编辑状态
+const toggleEditing = () => {
+  isEditing.value = !isEditing.value;
+};
+
+// 更新自定义文本
+const updateCustomText = (event) => {
+  customText.value = event.target.value;
+};
+
+// 重置预览设置
+const resetSettings = () => {
+  fontSize.value = 36;
+  fontWeight.value = 400;
+  fontStyle.value = "normal";
+  letterSpacing.value = 0;
+  lineHeight.value = 1.5;
+  bgColor.value = "#ffffff";
+  textColor.value = "#000000";
+  textAlign.value = "left";
+};
+
+// 复制CSS样式到剪贴板
+const copyCss = () => {
+  const css = `font-family: '${props.selectedFont}';
+font-size: ${fontSize.value}px;
+font-weight: ${fontWeight.value};
+font-style: ${fontStyle.value};
+letter-spacing: ${letterSpacing.value}px;
+line-height: ${lineHeight.value};
+text-align: ${textAlign.value};`;
+
+  navigator.clipboard.writeText(css)
+    .then(() => {
+      alert("CSS样式已复制到剪贴板");
+    })
+    .catch(err => {
+      console.error("复制CSS样式失败:", err);
+    });
+};
+
+// 监听字体变化
+watch(
+  () => props.selectedFont,
+  (newFont) => {
+    if (newFont) {
+      // 清空自定义文本，恢复默认预览文本
+      customText.value = "";
+    }
+  }
+);
+
+onMounted(() => {
+  // 初始化
+  // 设置默认选中的选项焦点
+  setTimeout(() => {
+    const selects = document.querySelectorAll('.custom-select select');
+    if (selects.length > 0) {
+      selects.forEach(select => {
+        // 模拟一个默认选中的动画效果
+        select.classList.add('initial-select');
+        setTimeout(() => {
+          select.classList.remove('initial-select');
+        }, 300);
+      });
+    }
+  }, 500);
+});
 </script>
 
 <template>
@@ -72,6 +164,20 @@ const toggleFavorite = () => {
       <div class="preview-actions">
         <button
           v-if="selectedFont"
+          class="action-btn commercial-btn"
+          :class="{ active: isCommercial }"
+          @click="toggleCommercial"
+          :title="isCommercial ? '取消商用标记' : '标记为商用字体'"
+        >
+          <svg viewBox="0 0 24 24">
+            <path
+              fill="currentColor"
+              d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+            />
+          </svg>
+        </button>
+        <button
+          v-if="selectedFont"
           class="action-btn favorite-btn"
           :class="{ active: isFavorite }"
           @click="toggleFavorite"
@@ -89,239 +195,779 @@ const toggleFavorite = () => {
       </div>
     </div>
 
-    <div class="preview-controls">
-      <div class="control-group">
-        <label for="preview-text">预览文本</label>
-        <textarea
-          id="preview-text"
-          :value="previewText"
-          @input="handleTextInput"
-          placeholder="输入要预览的文字"
-          rows="3"
-        ></textarea>
-      </div>
-
-      <div class="control-group">
-        <label for="font-size">字体大小</label>
-        <div class="range-control">
-          <input 
-            type="range" 
-            id="font-size" 
-            v-model="fontSize" 
-            min="8" 
-            max="72"
-            class="range-input"
+    <div v-if="!selectedFont" class="empty-preview">
+      <div class="empty-preview-icon">
+        <svg viewBox="0 0 24 24" width="64" height="64">
+          <path
+            fill="currentColor"
+            d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8h5z"
           />
-          <span class="range-value">{{ fontSize }}px</span>
+        </svg>
+      </div>
+      <p>请从字体列表中选择一个字体进行预览</p>
+    </div>
+
+    <div v-else class="preview-content">
+      <div class="status-badges" v-if="isFavorite || isCommercial">
+        <div v-if="isFavorite" class="status-badge favorite">
+          <svg viewBox="0 0 24 24" width="16" height="16">
+            <path
+              fill="currentColor"
+              d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+            />
+          </svg>
+          已收藏
+        </div>
+        <div v-if="isCommercial" class="status-badge commercial">
+          <svg viewBox="0 0 24 24" width="16" height="16">
+            <path
+              fill="currentColor"
+              d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+            />
+          </svg>
+          可商用
         </div>
       </div>
 
-      <div class="control-group style-controls">
-        <label class="checkbox-label">
-          <input type="checkbox" v-model="isBold" />
-          <span>加粗</span>
-        </label>
-        <label class="checkbox-label">
-          <input type="checkbox" v-model="isItalic" />
-          <span>斜体</span>
-        </label>
-      </div>
-    </div>
+      <div class="preview-settings">
+        <div class="settings-row">
+          <div class="setting">
+            <label>字体大小</label>
+            <div class="setting-control">
+              <input type="range" min="8" max="120" v-model="fontSize" />
+              <span class="setting-value">{{ fontSize }}px</span>
+            </div>
+          </div>
+          <div class="setting">
+            <label>字重</label>
+            <div class="setting-control">
+              <div class="custom-select">
+                <select v-model="fontWeight">
+                  <option value="100">Thin (100)</option>
+                  <option value="200">ExtraLight (200)</option>
+                  <option value="300">Light (300)</option>
+                  <option value="400">Regular (400)</option>
+                  <option value="500">Medium (500)</option>
+                  <option value="600">SemiBold (600)</option>
+                  <option value="700">Bold (700)</option>
+                  <option value="800">ExtraBold (800)</option>
+                  <option value="900">Black (900)</option>
+                </select>
+                <div class="select-arrow">
+                  <svg viewBox="0 0 24 24" width="16" height="16">
+                    <path fill="currentColor" d="M7 10l5 5 5-5z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-    <div class="preview-area" :style="previewStyle()">
-      {{ previewText }}
+        <div class="settings-row">
+          <div class="setting">
+            <label>字体样式</label>
+            <div class="setting-control">
+              <div class="custom-select">
+                <select v-model="fontStyle">
+                  <option value="normal">正常</option>
+                  <option value="italic">斜体</option>
+                </select>
+                <div class="select-arrow">
+                  <svg viewBox="0 0 24 24" width="16" height="16">
+                    <path fill="currentColor" d="M7 10l5 5 5-5z" />
+                  </svg>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="setting">
+            <label>字间距</label>
+            <div class="setting-control">
+              <input type="range" min="-5" max="20" v-model="letterSpacing" />
+              <span class="setting-value">{{ letterSpacing }}px</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="setting">
+            <label>行高</label>
+            <div class="setting-control">
+              <input type="range" min="0.5" max="3" step="0.1" v-model="lineHeight" />
+              <span class="setting-value">{{ lineHeight }}</span>
+            </div>
+          </div>
+          <div class="setting">
+            <label>对齐方式</label>
+            <div class="setting-control align-buttons">
+              <button
+                class="align-btn"
+                :class="{ active: textAlign === 'left' }"
+                @click="textAlign = 'left'"
+                title="左对齐"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18">
+                  <path
+                    fill="currentColor"
+                    d="M15 15H3v2h12v-2zm0-8H3v2h12V7zM3 13h18v-2H3v2zm0 8h18v-2H3v2z"
+                  />
+                </svg>
+              </button>
+              <button
+                class="align-btn"
+                :class="{ active: textAlign === 'center' }"
+                @click="textAlign = 'center'"
+                title="居中对齐"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18">
+                  <path
+                    fill="currentColor"
+                    d="M7 15v2h10v-2H7zm-4 6h18v-2H3v2zm0-8h18v-2H3v2zm4-6v2h10V7H7zM3 3v2h18V3H3z"
+                  />
+                </svg>
+              </button>
+              <button
+                class="align-btn"
+                :class="{ active: textAlign === 'right' }"
+                @click="textAlign = 'right'"
+                title="右对齐"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18">
+                  <path
+                    fill="currentColor"
+                    d="M3 21h18v-2H3v2zm6-4h12v-2H9v2zm-6-4h18v-2H3v2zm6-4h12V7H9v2zM3 3v2h18V3H3z"
+                  />
+                </svg>
+              </button>
+              <button
+                class="align-btn"
+                :class="{ active: textAlign === 'justify' }"
+                @click="textAlign = 'justify'"
+                title="两端对齐"
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18">
+                  <path
+                    fill="currentColor"
+                    d="M3 21h18v-2H3v2zm0-4h18v-2H3v2zm0-4h18v-2H3v2zm0-4h18V7H3v2zm0-6v2h18V3H3z"
+                  />
+                </svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-row">
+          <div class="setting">
+            <label>背景颜色</label>
+            <div class="setting-control">
+              <div class="color-picker">
+                <input type="color" v-model="bgColor" />
+                <div class="color-preview" :style="{ backgroundColor: bgColor }"></div>
+                <span class="color-value">{{ bgColor }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="setting">
+            <label>文字颜色</label>
+            <div class="setting-control">
+              <div class="color-picker">
+                <input type="color" v-model="textColor" />
+                <div class="color-preview" :style="{ backgroundColor: textColor }"></div>
+                <span class="color-value">{{ textColor }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-actions">
+          <button class="secondary-btn" @click="resetSettings">重置设置</button>
+          <button class="primary-btn" @click="copyCss">复制CSS</button>
+          <button class="edit-btn" @click="toggleEditing">
+            {{ isEditing ? "完成编辑" : "编辑文本" }}
+          </button>
+        </div>
+      </div>
+
+      <div class="preview-area" :style="fontStyles">
+        <textarea
+          v-if="isEditing"
+          v-model="customText"
+          @input="updateCustomText"
+          placeholder="输入自定义预览文本..."
+          :style="fontStyles"
+        ></textarea>
+        <div v-else class="preview-text" :style="{ backgroundColor: bgColor, color: textColor }">{{ displayText }}</div>
+      </div>
+
+      <div class="font-info" v-if="selectedFont">
+        <div class="info-row">
+          <div class="info-item">
+            <h4>字体名称</h4>
+            <p>{{ selectedFont }}</p>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
 .font-preview-container {
-  width: 100%;
-  padding: var(--spacing-lg);
-  border-radius: var(--radius-xl);
   background-color: var(--background-primary);
-  box-shadow: var(--shadow-md);
-  transition: var(--transition-normal);
-}
-
-.font-preview-container:hover {
-  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
 }
 
 .preview-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-lg);
-  padding-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+  padding-bottom: var(--spacing-sm);
   border-bottom: 1px solid var(--border-color);
 }
 
 .preview-header h2 {
-  color: var(--text-primary);
-  font-size: 1.5rem;
+  font-size: 1.25rem;
   font-weight: 600;
-  margin-bottom: var(--spacing-sm);
+  margin: 0;
+  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .selected-font {
-  color: var(--primary-color);
   font-size: 1.1rem;
-  font-weight: 500;
+  font-weight: 600;
+  margin-top: var(--spacing-xs);
+  color: var(--text-primary);
 }
 
 .font-tip {
-  color: var(--text-secondary);
-  font-size: var(--font-size-sm);
-  margin-top: var(--spacing-xs);
   display: flex;
   align-items: center;
   gap: var(--spacing-xs);
+  margin-top: var(--spacing-xs);
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
 }
 
 .font-tip svg {
-  width: 16px;
-  height: 16px;
-  color: var(--text-tertiary);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
-.preview-controls {
+.preview-actions {
   display: flex;
-  flex-direction: column;
-  gap: var(--spacing-lg);
-  margin-bottom: var(--spacing-lg);
-  background-color: var(--background-secondary);
-  padding: var(--spacing-lg);
-  border-radius: var(--radius-lg);
+  gap: var(--spacing-xs);
 }
 
-.control-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-sm);
-}
-
-.control-group label {
-  color: var(--text-secondary);
-  font-weight: 500;
-  font-size: 0.875rem;
-}
-
-.range-control {
+.action-btn {
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-lg);
+  background-color: var(--background-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.action-btn:hover {
+  background-color: var(--background-tertiary);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-2px);
+}
+
+.action-btn.active {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.action-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.action-btn.commercial-btn.active {
+  background-color: var(--success-color);
+  border-color: var(--success-color);
+}
+
+.empty-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl) 0;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+.empty-preview-icon {
+  margin-bottom: var(--spacing-md);
+  color: var(--text-tertiary);
+  opacity: 0.5;
+}
+
+.preview-content {
+  display: flex;
+  flex-direction: column;
   gap: var(--spacing-md);
 }
 
-.range-input {
+.status-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-sm);
+}
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.status-badge.favorite {
+  background-color: rgba(var(--warning-rgb), 0.15);
+  color: var(--warning-color);
+  border: 1px solid rgba(var(--warning-rgb), 0.3);
+}
+
+.status-badge.commercial {
+  background-color: rgba(var(--success-rgb), 0.15);
+  color: var(--success-color);
+  border: 1px solid rgba(var(--success-rgb), 0.3);
+}
+
+.preview-settings {
+  background-color: var(--background-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-md);
+  border: 1px solid var(--border-color);
+}
+
+.settings-row {
+  display: flex;
+  gap: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.setting {
   flex: 1;
-  height: 6px;
-  -webkit-appearance: none;
-  background: var(--border-color);
-  border-radius: 3px;
-  outline: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
 }
 
-.range-input::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 18px;
-  height: 18px;
-  background: var(--primary-color);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: var(--transition-fast);
-}
-
-.range-input::-webkit-slider-thumb:hover {
-  transform: scale(1.1);
-}
-
-.range-value {
-  min-width: 45px;
-  color: var(--text-secondary);
+.setting label {
   font-size: 0.875rem;
-  text-align: right;
+  color: var(--text-secondary);
 }
 
-.style-controls {
-  flex-direction: row;
-  gap: var(--spacing-xl);
-}
-
-.checkbox-label {
+.setting-control {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  cursor: pointer;
 }
 
-.checkbox-label input[type="checkbox"] {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--primary-color);
-}
-
-.checkbox-label span {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
-}
-
-textarea {
-  width: 100%;
-  padding: var(--spacing-md);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
-  background-color: var(--background-primary);
-  color: var(--text-primary);
-  font-size: 1rem;
-  resize: vertical;
-  min-height: 80px;
+.setting-control input[type="range"] {
+  flex: 1;
+  -webkit-appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--background-tertiary);
+  outline: none;
   transition: var(--transition-fast);
 }
 
-textarea:focus {
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+.setting-control input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary-color);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.setting-control input[type="range"]::-webkit-slider-thumb:hover {
+  background: var(--primary-hover);
+  transform: scale(1.1);
+}
+
+.setting-value {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  min-width: 40px;
+  text-align: right;
+}
+
+.custom-select {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  z-index: 10;
+}
+
+.select-arrow {
+  position: absolute;
+  right: 10px;
+  pointer-events: none;
+  color: var(--text-tertiary);
+  transition: transform 0.3s ease;
+}
+
+.custom-select:hover .select-arrow {
+  color: var(--primary-color);
+}
+
+.custom-select:focus-within .select-arrow {
+  transform: rotate(180deg);
+  color: var(--primary-color);
+}
+
+.setting-control select {
+  flex: 1;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background-color: var(--background-primary);
+  color: var(--text-primary);
   outline: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  appearance: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.setting-control select:hover {
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+.setting-control select:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.2);
+  transform: translateY(-2px);
+}
+
+.custom-select::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  width: 0;
+  height: 2px;
+  background: linear-gradient(to right, var(--primary-color), var(--accent-color));
+  transition: width 0.3s ease;
+  border-radius: 1px;
+}
+
+.custom-select:hover::after {
+  width: 100%;
+}
+
+.custom-select:focus-within::after {
+  width: 100%;
+}
+
+.setting-control select option {
+  background-color: var(--background-primary);
+  color: var(--text-primary);
+  padding: 8px;
+  opacity: 0;
+  animation: optionFadeIn 0.3s ease forwards;
+}
+
+@keyframes optionFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 为select添加展开动画的样式 */
+select:focus {
+  animation: selectExpand 0.3s ease;
+}
+
+@keyframes selectExpand {
+  0% {
+    max-height: 36px;
+  }
+  30% {
+    max-height: 50px;
+  }
+  100% {
+    max-height: 300px;
+  }
+}
+
+/* 初始选择动画 */
+.initial-select {
+  animation: initialSelect 0.5s ease-out;
+}
+
+@keyframes initialSelect {
+  0% {
+    box-shadow: 0 0 0 1px rgba(var(--primary-rgb), 0.1);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.2);
+    border-color: var(--primary-color);
+  }
+  100% {
+    box-shadow: 0 0 0 1px rgba(var(--primary-rgb), 0.1);
+  }
+}
+
+/* 统一设置select在打开时的样式 */
+select:-moz-focusring {
+  color: transparent;
+  text-shadow: 0 0 0 var(--text-primary);
+}
+
+select:focus option {
+  animation-delay: calc(0.05s * var(--index));
+}
+
+select option:first-child {
+  --index: 0;
+}
+
+select option:nth-child(2) {
+  --index: 1;
+}
+
+select option:nth-child(3) {
+  --index: 2;
+}
+
+select option:nth-child(4) {
+  --index: 3;
+}
+
+select option:nth-child(5) {
+  --index: 4;
+}
+
+select option:nth-child(6) {
+  --index: 5;
+}
+
+select option:nth-child(7) {
+  --index: 6;
+}
+
+select option:nth-child(8) {
+  --index: 7;
+}
+
+select option:nth-child(9) {
+  --index: 8;
+}
+
+.align-buttons {
+  display: flex;
+  gap: var(--spacing-xs);
+}
+
+.align-btn {
+  padding: var(--spacing-xs);
+  border-radius: var(--radius-sm);
+  background-color: var(--background-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.align-btn:hover {
+  background-color: var(--background-tertiary);
+  color: var(--primary-color);
+}
+
+.align-btn.active {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.primary-btn, .secondary-btn, .edit-btn {
+  padding: var(--spacing-xs) var(--spacing-md);
+  border-radius: var(--radius-md);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.primary-btn {
+  background-color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  color: white;
+}
+
+.primary-btn:hover {
+  background-color: var(--primary-hover);
+  transform: translateY(-2px);
+}
+
+.secondary-btn {
+  background-color: var(--background-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.secondary-btn:hover {
+  background-color: var(--background-tertiary);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-2px);
+}
+
+.edit-btn {
+  background-color: var(--background-primary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.edit-btn:hover {
+  background-color: var(--background-tertiary);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-2px);
 }
 
 .preview-area {
-  width: 100%;
   min-height: 200px;
-  padding: var(--spacing-lg);
   border-radius: var(--radius-lg);
-  background-color: var(--background-secondary);
-  color: var(--text-primary);
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: break-word;
+  padding: var(--spacing-lg);
+  transition: all var(--transition-fast);
   overflow: auto;
-  border: 1px solid var(--border-color);
-  transition: var(--transition-normal);
 }
 
-.preview-area:hover {
-  border-color: var(--primary-color);
-  box-shadow: inset 0 1px 5px rgba(0, 0, 0, 0.05);
+.preview-text {
+  word-wrap: break-word;
+  white-space: pre-wrap;
+}
+
+.preview-area textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 200px;
+  background: none;
+  border: none;
+  outline: none;
+  resize: vertical;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+}
+
+.font-info {
+  margin-top: var(--spacing-sm);
+  padding: var(--spacing-md);
+  background-color: var(--background-secondary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+}
+
+.info-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-md);
+}
+
+.info-item {
+  flex: 1;
+  min-width: 200px;
+}
+
+.info-item h4 {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin: 0 0 var(--spacing-xs);
+}
+
+.info-item p {
+  margin: 0;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.color-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  position: relative;
+}
+
+.color-picker input[type="color"] {
+  -webkit-appearance: none;
+  width: 30px;
+  height: 30px;
+  border: none;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  background: transparent;
+}
+
+.color-picker input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.color-picker input[type="color"]::-webkit-color-swatch {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+}
+
+.color-preview {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  position: absolute;
+  left: 0;
+  pointer-events: none;
+}
+
+.color-value {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-left: 38px;
 }
 
 @media (max-width: 870px) {
-  .font-preview-container {
-    padding: var(--spacing-md);
-  }
-  
-  .preview-controls {
-    padding: var(--spacing-md);
-  }
-  
-  .style-controls {
+  .settings-row {
     flex-direction: column;
-    gap: var(--spacing-md);
-  }
-  
-  .preview-area {
-    min-height: 150px;
-    padding: var(--spacing-md);
+    gap: var(--spacing-sm);
   }
 }
 </style>

@@ -38,8 +38,9 @@ export const BREAKPOINTS = {
 // 动画配置
 export const ANIMATION = {
     DURATION: {
-        FAST: 200,
-        NORMAL: 300,
-        SLOW: 500,
+        FAST: 150,
+        NORMAL: 250,
+        SLOW: 400,
     },
+    EASING: 'ease-in-out',
 }; 

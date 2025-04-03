@@ -46,8 +46,8 @@
                 "height": 800,
                 "resizable": true,
                 "title": "Font Viewer",
-                "width": 1200,
-                "minWidth": 800,
+                "width": 1250,
+                "minWidth": 1250,
                 "minHeight": 600
             }
         ]
