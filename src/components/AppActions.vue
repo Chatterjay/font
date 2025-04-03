@@ -208,7 +208,11 @@ const clearCache = () => {
         <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
       </svg>
     </button>
-    <button class="action-btn" @click="clearCache" title="清理缓存">
+    <button
+      class="action-btn"
+      @click="clearCache"
+      title="这将清除所有收藏、商用标记和主题设置。"
+    >
       <svg
         xmlns="http://www.w3.org/2000/svg"
         width="16"
