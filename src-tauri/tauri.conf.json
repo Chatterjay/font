@@ -1,48 +1,51 @@
 {
-    "build": {
-        "beforeDevCommand": "npm run dev",
-        "beforeBuildCommand": "npm run build",
-        "devPath": "http://localhost:5173",
-        "distDir": "../dist"
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devPath": "http://localhost:5173",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "Font Viewer",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "shell": {
+        "all": false,
+        "open": true
+      },
+      "fs": {
+        "all": false,
+        "scope": [
+          "C:\\Windows\\Fonts",
+          "C:\\Users\\Public\\AppData\\Local\\Microsoft\\Windows\\Fonts"
+        ],
+        "readFile": true,
+        "writeFile": true,
+        "readDir": true,
+        "exists": true
+      }
     },
-    "package": {
-        "productName": "Font Viewer",
-        "version": "0.1.0"
+    "bundle": {
+      "active": true,
+      "targets": "all",
+      "identifier": "com.font-viewer.dev"
     },
-    "tauri": {
-        "allowlist": {
-            "all": false,
-            "shell": {
-                "all": false,
-                "open": true
-            },
-            "fs": {
-                "all": false,
-                "scope": [ "C:\\Windows\\Fonts", "C:\\Users\\Public\\AppData\\Local\\Microsoft\\Windows\\Fonts" ],
-                "readFile": true,
-                "writeFile": true,
-                "readDir": true,
-                "exists": true
-            }
-        },
-        "bundle": {
-            "active": true,
-            "targets": "all",
-            "identifier": "com.font-viewer.dev"
-        },
-        "security": {
-            "csp": null
-        },
-        "windows": [
-            {
-                "fullscreen": false,
-                "height": 800,
-                "resizable": true,
-                "title": "Font Viewer",
-                "width": 1250,
-                "minWidth": 800,
-                "minHeight": 600
-            }
-        ]
-    }
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 800,
+        "resizable": true,
+        "title": "Font Viewer",
+        "width": 1250,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ]
+  }
 }

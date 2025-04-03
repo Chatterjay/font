@@ -26,7 +26,7 @@ const previewText = ref("你好，世界。汉字测试 AaBbCc 0123456789");
 const customText = ref("");
 // 字体大小
 const fontSize = ref(36);
-// 字重
+// 字体加粗
 const fontWeight = ref(400);
 // 字体样式
 const fontStyle = ref("normal");
@@ -48,8 +48,8 @@ const fontStyles = computed(() => {
   return {
     fontFamily: props.selectedFont || "inherit",
     fontSize: `${fontSize.value}px`,
-    fontWeight: fontWeight.value,
-    fontStyle: fontStyle.value,
+    fontWeight: fontStyle.value.includes("bold") ? 700 : fontWeight.value,
+    fontStyle: fontStyle.value.includes("italic") ? "italic" : "normal",
     letterSpacing: `${letterSpacing.value}px`,
     lineHeight: lineHeight.value,
     backgroundColor: bgColor.value,
@@ -99,17 +99,18 @@ const resetSettings = () => {
 const copyCss = () => {
   const css = `font-family: '${props.selectedFont}';
 font-size: ${fontSize.value}px;
-font-weight: ${fontWeight.value};
-font-style: ${fontStyle.value};
+font-weight: ${fontStyle.value.includes("bold") ? 700 : fontWeight.value};
+font-style: ${fontStyle.value.includes("italic") ? "italic" : "normal"};
 letter-spacing: ${letterSpacing.value}px;
 line-height: ${lineHeight.value};
 text-align: ${textAlign.value};`;
 
-  navigator.clipboard.writeText(css)
+  navigator.clipboard
+    .writeText(css)
     .then(() => {
       alert("CSS样式已复制到剪贴板");
     })
-    .catch(err => {
+    .catch((err) => {
       console.error("复制CSS样式失败:", err);
     });
 };
@@ -129,13 +130,13 @@ onMounted(() => {
   // 初始化
   // 设置默认选中的选项焦点
   setTimeout(() => {
-    const selects = document.querySelectorAll('.custom-select select');
+    const selects = document.querySelectorAll(".custom-select select");
     if (selects.length > 0) {
-      selects.forEach(select => {
+      selects.forEach((select) => {
         // 模拟一个默认选中的动画效果
-        select.classList.add('initial-select');
+        select.classList.add("initial-select");
         setTimeout(() => {
-          select.classList.remove('initial-select');
+          select.classList.remove("initial-select");
         }, 300);
       });
     }
@@ -186,9 +187,11 @@ onMounted(() => {
           <svg viewBox="0 0 24 24">
             <path
               fill="currentColor"
-              :d="isFavorite
-                ? 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'
-                : 'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z'"
+              :d="
+                isFavorite
+                  ? 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'
+                  : 'M16.5 3c-1.74 0-3.41.81-4.5 2.09C10.91 3.81 9.24 3 7.5 3 4.42 3 2 5.42 2 8.5c0 3.78 3.4 6.86 8.55 11.54L12 21.35l1.45-1.32C18.6 15.36 22 12.28 22 8.5 22 5.42 19.58 3 16.5 3zm-4.4 15.55l-.1.1-.1-.1C7.14 14.24 4 11.39 4 8.5 4 6.5 5.5 5 7.5 5c1.54 0 3.04.99 3.57 2.36h1.87C13.46 5.99 14.96 5 16.5 5c2 0 3.5 1.5 3.5 3.5 0 2.89-3.14 5.74-7.9 10.05z'
+              "
             />
           </svg>
         </button>
@@ -198,10 +201,7 @@ onMounted(() => {
     <div v-if="!selectedFont" class="empty-preview">
       <div class="empty-preview-icon">
         <svg viewBox="0 0 24 24" width="64" height="64">
-          <path
-            fill="currentColor"
-            d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8h5z"
-          />
+          <path fill="currentColor" d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8h5z" />
         </svg>
       </div>
       <p>请从字体列表中选择一个字体进行预览</p>
@@ -271,6 +271,8 @@ onMounted(() => {
                 <select v-model="fontStyle">
                   <option value="normal">正常</option>
                   <option value="italic">斜体</option>
+                  <option value="bold">加粗</option>
+                  <option value="italic bold">斜体加粗</option>
                 </select>
                 <div class="select-arrow">
                   <svg viewBox="0 0 24 24" width="16" height="16">
@@ -396,7 +398,13 @@ onMounted(() => {
           placeholder="输入自定义预览文本..."
           :style="fontStyles"
         ></textarea>
-        <div v-else class="preview-text" :style="{ backgroundColor: bgColor, color: textColor }">{{ displayText }}</div>
+        <div
+          v-else
+          class="preview-text"
+          :style="{ backgroundColor: bgColor, color: textColor }"
+        >
+          {{ displayText }}
+        </div>
       </div>
 
       <div class="font-info" v-if="selectedFont">
@@ -667,7 +675,7 @@ onMounted(() => {
 }
 
 .custom-select::after {
-  content: '';
+  content: "";
   position: absolute;
   bottom: -2px;
   left: 0;
@@ -819,7 +827,9 @@ select option:nth-child(9) {
   margin-top: var(--spacing-sm);
 }
 
-.primary-btn, .secondary-btn, .edit-btn {
+.primary-btn,
+.secondary-btn,
+.edit-btn {
   padding: var(--spacing-xs) var(--spacing-md);
   border-radius: var(--radius-md);
   font-size: 0.875rem;
