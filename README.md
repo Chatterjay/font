@@ -60,7 +60,7 @@ git clone https://github.com/Chatterjay/font-viewer.git
 cd font-viewer
 ```
 
-2. 安装依赖
+2. 安装依赖 
 
 ```bash
 npm install
