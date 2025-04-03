@@ -24,6 +24,8 @@ const emit = defineEmits(["toggle-favorite", "toggle-commercial"]);
 const previewText = ref("你好，世界。汉字测试 AaBbCc 0123456789");
 // 自定义文本
 const customText = ref("");
+// 是否使用默认文本
+const useDefaultText = ref(true);
 // 字体大小
 const fontSize = ref(36);
 // 字体加粗
@@ -60,7 +62,7 @@ const fontStyles = computed(() => {
 
 // 显示的文本
 const displayText = computed(() => {
-  return customText.value || previewText.value;
+  return useDefaultText.value ? previewText.value : customText.value;
 });
 
 // 切换收藏状态
@@ -81,6 +83,7 @@ const toggleEditing = () => {
 // 更新自定义文本
 const updateCustomText = (event) => {
   customText.value = event.target.value;
+  useDefaultText.value = false;
 };
 
 // 重置预览设置
@@ -93,6 +96,11 @@ const resetSettings = () => {
   bgColor.value = "#ffffff";
   textColor.value = "#000000";
   textAlign.value = "left";
+};
+
+// 重置为默认文本
+const resetToDefaultText = () => {
+  useDefaultText.value = true;
 };
 
 // 复制CSS样式到剪贴板
@@ -120,8 +128,7 @@ watch(
   () => props.selectedFont,
   (newFont) => {
     if (newFont) {
-      // 清空自定义文本，恢复默认预览文本
-      customText.value = "";
+      // 不清空自定义文本，保持用户输入状态
     }
   }
 );
@@ -383,6 +390,7 @@ onMounted(() => {
 
         <div class="settings-actions">
           <button class="secondary-btn" @click="resetSettings">重置设置</button>
+          <button class="secondary-btn" @click="resetToDefaultText">恢复默认文本</button>
           <button class="primary-btn" @click="copyCss">复制CSS</button>
           <button class="edit-btn" @click="toggleEditing">
             {{ isEditing ? "完成编辑" : "编辑文本" }}
