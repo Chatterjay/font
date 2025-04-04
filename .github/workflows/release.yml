@@ -6,6 +6,10 @@ on:
       - main # 在提交到main分支时触发
       - master # 在提交到master分支时触发（适应不同的主分支命名）
 
+# 添加权限配置
+permissions:
+  contents: write
+  
 jobs:
   release:
     runs-on: windows-latest
