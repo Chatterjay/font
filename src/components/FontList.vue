@@ -186,47 +186,81 @@ const getSystemFonts = async (page = 1) => {
 
     // 如果字体数量超过阈值，使用懒加载模式，否则一次性加载所有字体
     if (useLazyLoading.value) {
-      // 懒加载模式
-      const start = (page - 1) * PAGE_SIZE;
-      const end = start + PAGE_SIZE;
+      console.log(
+        `字体数量${uniqueFonts.length}超过阈值${LAZY_LOAD_THRESHOLD}，使用懒加载`
+      );
 
-      // 获取当前页的字体
-      const pageFonts = uniqueFonts.slice(start, end).map((font) => ({
+      // 计算当前页应该加载哪些字体
+      const startIndex = (page - 1) * PAGE_SIZE;
+      const endIndex = startIndex + PAGE_SIZE;
+      const fontsToLoad = uniqueFonts.slice(startIndex, endIndex);
+
+      // 检查是否还有更多字体可加载
+      hasMore.value = endIndex < uniqueFonts.length;
+
+      // 转换字体对象，保留更多属性
+      const fontObjects = fontsToLoad.map((font) => ({
         family: font.family,
-        weight: font.weight,
+        weight: font.weight || "Regular",
+        style: font.style || "",
+        italic: font.style?.toLowerCase().includes("italic") || false,
+        variableAxes: font.variableAxes || [],
+        fullName: font.fullName || font.family,
+        postscriptName: font.postscriptName || "",
       }));
 
       // 更新字体列表
-      if (page === 1) {
-        fontsList.value = pageFonts;
-      } else {
-        fontsList.value = [...fontsList.value, ...pageFonts];
-      }
+      fontsList.value = page === 1 ? fontObjects : [...fontsList.value, ...fontObjects];
 
-      // 更新是否还有更多字体
-      hasMore.value = end < uniqueFonts.length;
+      // 更新加载进度
+      loadingProgress.value = Math.min(
+        100,
+        Math.round((endIndex / uniqueFonts.length) * 100)
+      );
+
+      console.log(
+        `懒加载进度：${loadingProgress.value}%，已加载 ${fontsList.value.length} 个字体`
+      );
     } else {
-      // 不使用懒加载，直接加载所有字体 - 分批加载以避免UI卡顿
-      // 对于较少数量的字体，使用分批加载可以提供更好的用户体验
-      loadAllFontsInBatches(uniqueFonts);
+      // 一次性加载所有字体，但使用批次加载以避免UI阻塞
+      console.log(
+        `字体数量${uniqueFonts.length}未超过阈值${LAZY_LOAD_THRESHOLD}，全部加载`
+      );
+
+      // 使用增强的字体对象
+      const enhancedFonts = uniqueFonts.map((font) => ({
+        family: font.family,
+        weight: font.weight || "Regular",
+        style: font.style || "",
+        italic: font.style?.toLowerCase().includes("italic") || false,
+        variableAxes: font.variableAxes || [],
+        fullName: font.fullName || font.family,
+        postscriptName: font.postscriptName || "",
+      }));
+
+      // 分批加载所有字体
+      loadAllFontsInBatches(enhancedFonts);
+
+      // 没有更多字体可加载
       hasMore.value = false;
     }
 
-    // 默认选择第一个字体
-    if (page === 1 && fontsList.value.length > 0) {
-      selectFont(fontsList.value[0].family);
+    // 如果是第一页，滚动到顶部
+    if (page === 1) {
+      const container = document.querySelector(".font-list-scrollable");
+      if (container) {
+        container.scrollTop = 0;
+      }
     }
 
-    console.log(
-      `已加载 ${fontsList.value.length} 个字体，总计 ${totalFonts.value} 个字体`
-    );
-  } catch (err) {
-    error.value = "获取字体列表失败";
-    console.error("获取字体列表失败:", err);
-  } finally {
-    if (page === 1) {
+    // 当完成加载时
+    if (page === 1 || !hasMore.value) {
       isLoading.value = false;
     }
+  } catch (error) {
+    console.error("获取系统字体失败:", error);
+    error.value = `加载字体失败: ${error.message || "未知错误"}`;
+    isLoading.value = false;
   }
 };
 
@@ -245,11 +279,8 @@ const loadAllFontsInBatches = (allFonts) => {
     const currentBatchSize = Math.min(batchSize, remainingFonts);
     const batch = allFonts.slice(loadedCount, loadedCount + currentBatchSize);
 
-    // 转换字体对象
-    const fontObjects = batch.map((font) => ({
-      family: font.family,
-      weight: font.weight,
-    }));
+    // 直接使用已处理过的字体对象，不需要再次转换
+    const fontObjects = batch;
 
     // 更新字体列表
     if (loadedCount === 0) {
@@ -415,7 +446,12 @@ const performFullSearch = (query) => {
           .filter((font) => font.family.toLowerCase().includes(query))
           .map((font) => ({
             family: font.family,
-            weight: font.weight,
+            weight: font.weight || "Regular",
+            style: font.style || "",
+            italic: font.style?.toLowerCase().includes("italic") || false,
+            variableAxes: font.variableAxes || [],
+            fullName: font.fullName || font.family,
+            postscriptName: font.postscriptName || "",
           }));
 
         // 合并结果
@@ -1123,6 +1159,20 @@ onUnmounted(() => {
             >
               {{ font.family }}
             </div>
+            <div class="font-info">
+              <span class="info-badge weight-badge" v-if="font.weight">{{
+                font.weight
+              }}</span>
+              <span class="info-badge style-badge" v-if="font.style">{{
+                font.style
+              }}</span>
+              <span class="info-badge italic-badge" v-if="font.italic">斜体</span>
+              <span
+                class="info-badge variable-badge"
+                v-if="font.variableAxes && font.variableAxes.length > 0"
+                >可变</span
+              >
+            </div>
             <div
               class="font-sample"
               :style="{
@@ -1602,16 +1652,73 @@ onUnmounted(() => {
 }
 
 .font-name {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-primary);
+  font-size: 1.05rem;
+  font-weight: 500;
   margin-bottom: var(--spacing-xs);
+  color: var(--text-primary);
+  transition: var(--transition-normal);
+  position: relative;
+  z-index: 1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  max-width: 95%;
+}
+
+.font-info {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: var(--spacing-xs);
+  min-height: 20px;
+}
+
+.info-badge {
+  font-size: 0.65rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background-color: var(--background-secondary);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  font-weight: normal;
+  font-family: var(--font-mono);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.weight-badge {
+  background-color: rgba(var(--primary-rgb), 0.1);
+  color: rgba(var(--primary-rgb), 0.9);
+}
+
+.style-badge {
+  background-color: rgba(var(--accent-rgb), 0.1);
+  color: rgba(var(--accent-rgb), 0.9);
+}
+
+.italic-badge {
+  background-color: rgba(var(--warning-rgb), 0.1);
+  color: rgba(var(--warning-rgb), 0.9);
+}
+
+.variable-badge {
+  background-color: rgba(var(--success-rgb), 0.1);
+  color: rgba(var(--success-rgb), 0.9);
 }
 
 .font-sample {
-  font-size: 0.9rem;
-  color: var(--text-secondary);
-  line-height: 1.4;
+  height: 25px;
+  overflow: hidden;
+  font-size: 1.2rem;
+  color: var(--text-primary);
+  opacity: 0.9;
+  transition: all 0.2s ease-in-out;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  user-select: none;
 }
 
 .font-card-actions {

@@ -2,8 +2,9 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*' # 当推送 v 开头的标签时触发
+    branches:
+      - main # 在提交到main分支时触发
+      - master # 在提交到master分支时触发（适应不同的主分支命名）
 
 jobs:
   release:
@@ -18,36 +19,44 @@ jobs:
           node-version: '18'
           cache: 'npm'
 
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-msvc
-          toolchain: stable
-          profile: minimal
-          override: true
-          components: rustfmt, clippy
-
       - name: Install dependencies
         run: npm ci
 
       - name: Build the app
-        uses: tauri-apps/tauri-action@v0
+        run: npm run build
+
+      - name: Get package version
+        id: package_version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $env:GITHUB_OUTPUT
+        shell: pwsh
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VITE_APP_TITLE: Font Viewer
         with:
-          tagName: app-v__VERSION__
-          releaseName: 'App v__VERSION__'
-          releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
+          tag_name: v${{ steps.package_version.outputs.version }}-${{ github.sha }}
+          release_name: Release v${{ steps.package_version.outputs.version }}-${{ github.run_number }}
+          body: |
+            自动构建版本
+            提交SHA: ${{ github.sha }}
+            构建时间: ${{ github.event.repository.updated_at }}
+          draft: false
           prerelease: false
 
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
+      - name: Zip build files
+        run: |
+          cd dist
+          7z a -tzip ../font-viewer-${{ steps.package_version.outputs.version }}.zip *
+        shell: pwsh
+
+      - name: Upload release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          name: font-viewer-windows
-          path: |
-            src-tauri/target/release/*.exe
-            src-tauri/target/release/*.dll
-            src-tauri/target/release/*.rlib
-            src-tauri/target/release/*.pdb 
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./font-viewer-${{ steps.package_version.outputs.version }}.zip
+          asset_name: font-viewer-${{ steps.package_version.outputs.version }}.zip
+          asset_content_type: application/zip 
