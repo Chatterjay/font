@@ -1,11 +1,13 @@
 <script setup>
-import { inject, onMounted, ref } from "vue";
+import { inject, onMounted, ref, watch } from "vue";
 
 const emit = defineEmits(["select-font"]);
 
 // 从父组件注入收藏相关的数据和方法
 const favorites = inject("favorites");
 const removeFavorite = inject("removeFavorite");
+// 注入当前选中的字体
+const selectedFont = inject("selectedFont", ref(""));
 
 // 存储元素引用和已加载字体
 const itemRefs = ref([]);
@@ -29,6 +31,38 @@ const loadFont = (fontName) => {
   document.head.appendChild(link);
 };
 
+// 滚动到选中的字体
+const scrollToSelectedFont = (fontName) => {
+  if (!fontName || favorites.value.length === 0) return;
+  
+  // 延迟执行，确保DOM已更新
+  setTimeout(() => {
+    // 查找选中的字体元素
+    const fontCards = document.querySelectorAll('.favorite-card');
+    const fontIndex = favorites.value.indexOf(fontName);
+    
+    if (fontIndex >= 0 && fontCards[fontIndex]) {
+      // 获取滚动容器
+      const container = document.querySelector('.favorites-grid');
+      if (container) {
+        // 计算需要滚动的位置
+        const cardTop = fontCards[fontIndex].offsetTop;
+        container.scrollTo({
+          top: cardTop,
+          behavior: 'smooth'
+        });
+      }
+    }
+  }, 100);
+};
+
+// 监听selectedFont变化
+watch(() => selectedFont.value, (newFont) => {
+  if (newFont && favorites.value.includes(newFont)) {
+    scrollToSelectedFont(newFont);
+  }
+});
+
 // 初始化 Intersection Observer
 onMounted(() => {
   const observer = new IntersectionObserver(
@@ -46,6 +80,13 @@ onMounted(() => {
 
   itemRefs.value.forEach((el) => {
     if (el) observer.observe(el);
+  });
+  
+  // 监听字体定位事件
+  document.addEventListener('locateFontInList', (event) => {
+    if (event.detail && event.detail.fontName && favorites.value.includes(event.detail.fontName)) {
+      scrollToSelectedFont(event.detail.fontName);
+    }
   });
 });
 </script>
@@ -77,6 +118,7 @@ onMounted(() => {
         v-for="(font, index) in favorites"
         :key="font"
         class="favorite-card"
+        :class="{ 'is-selected': font === selectedFont }"
         @click="selectFont(font)"
         :data-font="font"
         :ref="(el) => (itemRefs[index] = el)"
@@ -242,6 +284,12 @@ onMounted(() => {
   border-color: var(--danger-color);
   color: white;
   transform: scale(1.1);
+}
+
+.favorite-card.is-selected {
+  background-color: var(--primary-color-10);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--primary-color-20);
 }
 
 @media (max-width: 870px) {

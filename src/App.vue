@@ -1,5 +1,5 @@
 <script setup>
-import { ref, provide, onMounted, computed } from "vue";
+import { ref, provide, onMounted, computed, watch } from "vue";
 import FontList from "./components/FontList.vue";
 import FontPreview from "./components/FontPreview.vue";
 import FavoriteList from "./components/FavoriteList.vue";
@@ -9,6 +9,7 @@ import AppActions from "./components/AppActions.vue";
 import { saveToStorage, getFromStorage } from "./utils/storage";
 import { STORAGE_KEYS, LAYOUT_MODES } from "./constants";
 import { invoke } from "@tauri-apps/api/tauri";
+import BatchSelectableFontList from "./components/BatchSelectableFontList.vue";
 
 // 检测字体兼容性
 const checkFontCompatibility = () => {
@@ -85,6 +86,22 @@ const toggleCommercial = (fontName) => {
   saveCommercialFonts();
 };
 
+// 批量移除收藏
+const batchRemoveFavorites = (fontNames) => {
+  fontNames.forEach(fontName => {
+    favorites.value = favorites.value.filter((name) => name !== fontName);
+  });
+  saveFavorites();
+};
+
+// 批量移除商用标记
+const batchRemoveCommercial = (fontNames) => {
+  fontNames.forEach(fontName => {
+    commercialFonts.value.delete(fontName);
+  });
+  saveCommercialFonts();
+};
+
 // 移除收藏
 const removeFavorite = (fontName) => {
   favorites.value = favorites.value.filter((name) => name !== fontName);
@@ -115,6 +132,11 @@ const clearSearchQuery = () => {
 // 处理字体选择
 const handleSelectFont = (fontName) => {
   selectedFont.value = fontName;
+
+  // 如果不在预览标签页，切换到预览标签页以便查看字体
+  if (activeTab.value !== "preview") {
+    activeTab.value = "preview";
+  }
 };
 
 // 从localStorage加载布局状态
@@ -140,6 +162,17 @@ const toggleLayout = () => {
 // 切换标签页
 const switchTab = (tab) => {
   activeTab.value = tab;
+
+  // 如果有选中的字体，切换标签页后触发字体定位
+  if (selectedFont.value) {
+    // 使用微任务确保DOM已更新后再滚动到对应字体
+    setTimeout(() => {
+      const event = new CustomEvent("locateFontInList", {
+        detail: { fontName: selectedFont.value },
+      });
+      document.dispatchEvent(event);
+    }, 200);
+  }
 };
 
 // 获取系统字体
@@ -174,6 +207,49 @@ provide("toggleCommercial", toggleCommercial);
 // 提供布局相关的状态和方法
 provide("isSideBySide", isSideBySide);
 provide("toggleLayout", toggleLayout);
+
+// 提供当前选中的字体
+provide("selectedFont", selectedFont);
+
+// 在switchTab方法下方添加滚动到商用字体的函数
+const scrollToCommercialFont = (fontName) => {
+  if (!fontName || !commercialFonts.value.has(fontName)) return;
+
+  // 确保DOM已更新
+  setTimeout(() => {
+    // 只在商用字体标签页中执行
+    if (activeTab.value !== "commercial") return;
+
+    const fontCards = document.querySelectorAll(".commercial-wrapper .font-card");
+    const commercialArray = Array.from(commercialFonts.value);
+    const fontIndex = commercialArray.indexOf(fontName);
+
+    if (fontIndex >= 0 && fontCards[fontIndex]) {
+      const container = document.querySelector(".fonts-grid");
+      if (container) {
+        const cardTop = fontCards[fontIndex].offsetTop;
+        container.scrollTo({
+          top: cardTop,
+          behavior: "smooth",
+        });
+      }
+    }
+  }, 200);
+};
+
+// 监听Tab切换，处理字体定位
+watch(
+  () => activeTab.value,
+  (newTab) => {
+    if (
+      newTab === "commercial" &&
+      selectedFont.value &&
+      commercialFonts.value.has(selectedFont.value)
+    ) {
+      scrollToCommercialFont(selectedFont.value);
+    }
+  }
+);
 
 // 初始加载
 onMounted(() => {
@@ -251,33 +327,33 @@ onMounted(() => {
     </div>
 
     <div class="main-content">
-    <header class="app-header">
+      <header class="app-header">
         <h1>系统字体查看器</h1>
         <p class="app-description">预览、搜索和收藏您喜欢的字体</p>
         <SearchBar @search="handleSearch" class="search-component" />
-    </header>
+      </header>
 
-    <main class="app-content" :class="{ 'side-by-side': isSideBySide }">
+      <main class="app-content" :class="{ 'side-by-side': isSideBySide }">
         <transition name="panel-transition" mode="out-in">
           <div
             :key="isSideBySide ? 'side-by-side' : 'stacked'"
             class="panels-container"
             :class="{ 'side-by-side': isSideBySide }"
           >
-      <div class="left-panel">
+            <div class="left-panel">
               <div class="app-font-list-wrapper">
-          <FontList
-            :fonts="fonts"
-            :search-query="searchQuery"
-            :is-side-by-side="isSideBySide"
+                <FontList
+                  :fonts="fonts"
+                  :search-query="searchQuery"
+                  :is-side-by-side="isSideBySide"
                   :current-font="selectedFont"
-            @select-font="handleSelectFont"
+                  @select-font="handleSelectFont"
                   @clear-search="clearSearchQuery"
-          />
-        </div>
-      </div>
+                />
+              </div>
+            </div>
 
-      <div class="right-panel">
+            <div class="right-panel">
               <div class="tabs-container">
                 <div class="tabs-header">
                   <button
@@ -329,108 +405,40 @@ onMounted(() => {
 
                 <div class="tab-content">
                   <div v-if="activeTab === 'preview'" class="tab-pane">
-          <FontPreview
-            :selected-font="selectedFont"
-            :is-favorite="favorites.includes(selectedFont)"
+                    <FontPreview
+                      :selected-font="selectedFont"
+                      :is-favorite="favorites.includes(selectedFont)"
                       :is-commercial="commercialFonts.has(selectedFont)"
-            @toggle-favorite="toggleFavorite"
+                      @toggle-favorite="toggleFavorite"
                       @toggle-commercial="toggleCommercial"
-          />
-        </div>
+                    />
+                  </div>
 
                   <div v-if="activeTab === 'favorites'" class="tab-pane">
-                    <div class="favorite-wrapper">
-                      <h3 class="section-title">收藏的字体</h3>
-                      <div v-if="favorites.length === 0" class="empty-state">
-                        <svg viewBox="0 0 24 24" width="48" height="48">
-                          <path
-                            fill="currentColor"
-                            d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-                          />
-                        </svg>
-                        <p>暂无收藏字体</p>
-                        <p class="hint">点击字体卡片右上角的星标收藏字体</p>
-                      </div>
-                      <div v-else class="fonts-grid">
-                        <div
-                          v-for="font in favorites"
-                          :key="font"
-                          class="font-card"
-                          @click="handleSelectFont(font)"
-                        >
-                          <div class="font-card-content">
-                            <div class="font-name" :style="{ fontFamily: font }">
-                              {{ font }}
-                            </div>
-                            <div class="font-sample" :style="{ fontFamily: font }">
-                              AaBbCc 123 你好世界
-                            </div>
-                          </div>
-                          <button
-                            class="remove-btn"
-                            @click.stop="removeFavorite(font)"
-                            title="取消收藏"
-                          >
-                            <svg viewBox="0 0 24 24" width="16" height="16">
-                              <path
-                                fill="currentColor"
-                                d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-                              />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-      </div>
+                    <BatchSelectableFontList
+                      :fonts="favorites"
+                      :current-font="selectedFont"
+                      type="favorites"
+                      @select-font="handleSelectFont"
+                      @remove-font="removeFavorite"
+                      @batch-remove="batchRemoveFavorites"
+                    />
+                  </div>
 
                   <div v-if="activeTab === 'commercial'" class="tab-pane">
-                    <div class="commercial-wrapper">
-                      <h3 class="section-title">可商用字体</h3>
-                      <div v-if="commercialCount === 0" class="empty-state">
-                        <svg viewBox="0 0 24 24" width="48" height="48">
-                          <path
-                            fill="currentColor"
-                            d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-                          />
-                        </svg>
-                        <p>暂无商用字体</p>
-                        <p class="hint">点击字体卡片右上角的商用标记添加商用字体</p>
-                      </div>
-                      <div v-else class="fonts-grid">
-                        <div
-                          v-for="font in Array.from(commercialFonts)"
-                          :key="font"
-                          class="font-card"
-                          @click="handleSelectFont(font)"
-                        >
-                          <div class="font-card-content">
-                            <div class="font-name" :style="{ fontFamily: font }">
-                              {{ font }}
-                            </div>
-                            <div class="font-sample" :style="{ fontFamily: font }">
-                              AaBbCc 123 你好世界
-                            </div>
-        </div>
-                          <button
-                            class="remove-btn commercial"
-                            @click.stop="toggleCommercial(font)"
-                            title="取消商用标记"
-                          >
-                            <svg viewBox="0 0 24 24" width="16" height="16">
-              <path
-                fill="currentColor"
-                                d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-              />
-            </svg>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+                    <BatchSelectableFontList
+                      :fonts="Array.from(commercialFonts)"
+                      :current-font="selectedFont"
+                      type="commercial"
+                      @select-font="handleSelectFont"
+                      @remove-font="toggleCommercial"
+                      @batch-remove="batchRemoveCommercial"
+                    />
                   </div>
                 </div>
               </div>
-        </div>
-      </div>
+            </div>
+          </div>
         </transition>
       </main>
     </div>
@@ -926,6 +934,13 @@ body {
 .remove-btn.commercial:hover {
   background-color: var(--success-color);
   border-color: var(--success-color);
+}
+
+.font-card.is-selected {
+  background-color: var(--primary-color-10);
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px var(--primary-color-20);
+  transform: translateY(-2px);
 }
 
 @media (max-width: 1200px) {

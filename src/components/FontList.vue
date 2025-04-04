@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, inject, computed } from "vue";
+import { ref, onMounted, inject, computed, watch, onUnmounted } from "vue";
 
 const props = defineProps({
   searchQuery: {
@@ -570,11 +570,301 @@ const clearSearch = () => {
   resetAfterSearch();
 };
 
+// 滚动到当前选中的字体
+const scrollToSelectedFont = (fontName) => {
+  if (!fontName) return;
+
+  // 确保DOM已渲染完成
+  setTimeout(() => {
+    // 查找当前选中的字体元素
+    const fontCard = document.querySelector(`.font-card[class*="current-preview"]`);
+    if (fontCard) {
+      const container = document.querySelector(".font-list-scrollable");
+      if (container) {
+        // 计算需要滚动的位置，让选中的字体尽量居中显示
+        const cardTop = fontCard.offsetTop;
+        const containerHeight = container.offsetHeight;
+        const scrollTo = cardTop - containerHeight / 2 + fontCard.offsetHeight / 2;
+
+        // 使用平滑滚动效果
+        container.scrollTo({
+          top: scrollTo,
+          behavior: "smooth",
+        });
+      }
+    }
+  }, 100);
+};
+
+// 监听当前字体变化，自动滚动到该字体
+watch(
+  () => props.currentFont,
+  (newFont) => {
+    if (newFont) {
+      scrollToSelectedFont(newFont);
+    }
+  },
+  { immediate: true }
+);
+
+// 增加拖动选择相关状态
+const isDragging = ref(false);
+const lastSelectedFont = ref(null);
+const dragStartElement = ref(null);
+
+// 处理拖动开始
+const handleDragStart = (fontName, event) => {
+  if (!isBatchMode.value) return;
+
+  isDragging.value = true;
+  dragStartElement.value = event.target.closest(".font-card");
+  lastSelectedFont.value = fontName;
+
+  // 如果按住Ctrl键，则不改变当前字体的选择状态
+  if (!event.ctrlKey && !event.metaKey) {
+    toggleFontSelection(fontName);
+  }
+
+  // 防止文本选择
+  event.preventDefault();
+};
+
+// 处理拖动过程中
+const handleDragOver = (fontName, event) => {
+  if (!isDragging.value || !isBatchMode.value) return;
+
+  // 如果拖到了新的字体上
+  if (lastSelectedFont.value !== fontName) {
+    lastSelectedFont.value = fontName;
+    toggleFontSelection(fontName);
+
+    // 添加触感反馈（如果浏览器支持）
+    if (window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(50); // 短振动50毫秒
+    }
+  }
+
+  // 防止文本选择
+  event.preventDefault();
+};
+
+// 处理拖动结束
+const handleDragEnd = () => {
+  isDragging.value = false;
+  dragStartElement.value = null;
+  lastSelectedFont.value = null;
+};
+
+// 批量同时添加收藏和商用标记
+const batchFavoriteAndCommercial = () => {
+  selectedFonts.value.forEach((fontName) => {
+    // 添加收藏
+    if (!isFavorite(fontName)) {
+      toggleFavorite(fontName);
+    }
+
+    // 添加商用标记
+    if (!isCommercial(fontName)) {
+      toggleCommercial(fontName);
+    }
+  });
+  toggleBatchMode();
+};
+
+// 批量同时取消收藏和商用标记
+const batchRemoveBoth = () => {
+  selectedFonts.value.forEach((fontName) => {
+    // 取消收藏
+    if (isFavorite(fontName)) {
+      toggleFavorite(fontName);
+    }
+
+    // 取消商用标记
+    if (isCommercial(fontName)) {
+      toggleCommercial(fontName);
+    }
+  });
+  toggleBatchMode();
+};
+
+// 全选功能
+const selectAll = () => {
+  filteredFonts.value.forEach((font) => {
+    selectedFonts.value.add(font.family);
+  });
+};
+
+// 反选功能
+const invertSelection = () => {
+  filteredFonts.value.forEach((font) => {
+    if (selectedFonts.value.has(font.family)) {
+      selectedFonts.value.delete(font.family);
+    } else {
+      selectedFonts.value.add(font.family);
+    }
+  });
+};
+
+// 区域选择功能变量
+const selectionRectangle = ref(null);
+const isAreaSelecting = ref(false);
+const startPos = ref({ x: 0, y: 0 });
+const currentPos = ref({ x: 0, y: 0 });
+const fontCardsInArea = ref(new Set());
+
+// 开始区域选择
+const startAreaSelection = (event) => {
+  if (!isBatchMode.value) return;
+
+  // 如果按住了Shift键，启动区域选择
+  if (event.shiftKey) {
+    event.preventDefault();
+
+    isAreaSelecting.value = true;
+
+    // 获取鼠标相对于容器的位置
+    const container = document.querySelector(".font-list-scrollable");
+    const containerRect = container.getBoundingClientRect();
+    startPos.value = {
+      x: event.clientX - containerRect.left,
+      y: event.clientY - containerRect.top + container.scrollTop,
+    };
+    currentPos.value = { ...startPos.value };
+
+    // 创建选择矩形
+    if (!selectionRectangle.value) {
+      selectionRectangle.value = document.createElement("div");
+      selectionRectangle.value.className = "selection-rectangle";
+      container.appendChild(selectionRectangle.value);
+    }
+
+    // 更新选择矩形位置
+    updateSelectionRectangle();
+  }
+};
+
+// 更新区域选择
+const updateAreaSelection = (event) => {
+  if (!isAreaSelecting.value) return;
+
+  event.preventDefault();
+
+  // 获取鼠标当前位置
+  const container = document.querySelector(".font-list-scrollable");
+  const containerRect = container.getBoundingClientRect();
+  currentPos.value = {
+    x: event.clientX - containerRect.left,
+    y: event.clientY - containerRect.top + container.scrollTop,
+  };
+
+  // 更新选择矩形位置和尺寸
+  updateSelectionRectangle();
+
+  // 检查哪些字体卡片在选择区域内
+  checkFontCardsInArea();
+};
+
+// 结束区域选择
+const endAreaSelection = () => {
+  if (!isAreaSelecting.value) return;
+
+  isAreaSelecting.value = false;
+
+  // 更新选中的字体
+  fontCardsInArea.value.forEach((fontName) => {
+    toggleFontSelection(fontName);
+  });
+
+  // 清空临时集合
+  fontCardsInArea.value.clear();
+
+  // 移除选择矩形
+  if (selectionRectangle.value && selectionRectangle.value.parentNode) {
+    selectionRectangle.value.parentNode.removeChild(selectionRectangle.value);
+    selectionRectangle.value = null;
+  }
+};
+
+// 更新选择矩形的位置和尺寸
+const updateSelectionRectangle = () => {
+  if (!selectionRectangle.value) return;
+
+  const left = Math.min(startPos.value.x, currentPos.value.x);
+  const top = Math.min(startPos.value.y, currentPos.value.y);
+  const width = Math.abs(currentPos.value.x - startPos.value.x);
+  const height = Math.abs(currentPos.value.y - startPos.value.y);
+
+  selectionRectangle.value.style.left = `${left}px`;
+  selectionRectangle.value.style.top = `${top}px`;
+  selectionRectangle.value.style.width = `${width}px`;
+  selectionRectangle.value.style.height = `${height}px`;
+};
+
+// 检查哪些字体卡片在选择区域内
+const checkFontCardsInArea = () => {
+  // 获取选择区域的边界
+  const left = Math.min(startPos.value.x, currentPos.value.x);
+  const top = Math.min(startPos.value.y, currentPos.value.y);
+  const right = Math.max(startPos.value.x, currentPos.value.x);
+  const bottom = Math.max(startPos.value.y, currentPos.value.y);
+
+  // 获取所有字体卡片
+  const container = document.querySelector(".font-list-scrollable");
+  const fontCards = container.querySelectorAll(".font-card");
+
+  // 清空临时集合
+  fontCardsInArea.value.clear();
+
+  // 检查每个字体卡片是否在选择区域内
+  fontCards.forEach((card) => {
+    const cardRect = card.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+
+    // 计算卡片相对于容器的位置
+    const cardLeft = cardRect.left - containerRect.left;
+    const cardTop = cardRect.top - containerRect.top + container.scrollTop;
+    const cardRight = cardLeft + cardRect.width;
+    const cardBottom = cardTop + cardRect.height;
+
+    // 判断是否有交集
+    if (!(cardRight < left || cardLeft > right || cardBottom < top || cardTop > bottom)) {
+      // 添加到临时集合
+      const fontName = card.querySelector(".font-name").textContent.trim();
+      fontCardsInArea.value.add(fontName);
+
+      // 添加高亮样式
+      card.classList.add("in-selection-area");
+    } else {
+      // 移除高亮样式
+      card.classList.remove("in-selection-area");
+    }
+  });
+};
+
 onMounted(() => {
   loadCommercialFonts();
 
   // 添加控制台信息，标记组件已经初始化
   console.log("FontList组件已初始化，开始加载系统字体...");
+
+  // 监听字体定位自定义事件
+  document.addEventListener("locateFontInList", (event) => {
+    if (event.detail && event.detail.fontName) {
+      scrollToSelectedFont(event.detail.fontName);
+    }
+  });
+
+  // 添加全局鼠标抬起事件，确保即使鼠标移出元素也能停止拖动
+  document.addEventListener("mouseup", handleDragEnd);
+  document.addEventListener("touchend", handleDragEnd);
+
+  // 区域选择相关事件
+  const container = document.querySelector(".font-list-scrollable");
+  if (container) {
+    container.addEventListener("mousedown", startAreaSelection);
+    container.addEventListener("mousemove", updateAreaSelection);
+    container.addEventListener("mouseup", endAreaSelection);
+  }
 
   // 先检查是否支持字体API
   if (window.queryLocalFonts) {
@@ -585,6 +875,27 @@ onMounted(() => {
     console.error("浏览器不支持queryLocalFonts API");
     isLoading.value = false;
   }
+});
+
+// 组件销毁时清理事件监听
+onUnmounted(() => {
+  document.removeEventListener("mouseup", handleDragEnd);
+  document.removeEventListener("touchend", handleDragEnd);
+
+  // 清理区域选择事件
+  const container = document.querySelector(".font-list-scrollable");
+  if (container) {
+    container.removeEventListener("mousedown", startAreaSelection);
+    container.removeEventListener("mousemove", updateAreaSelection);
+    container.removeEventListener("mouseup", endAreaSelection);
+  }
+
+  // 清理自定义事件监听
+  document.removeEventListener("locateFontInList", (event) => {
+    if (event.detail && event.detail.fontName) {
+      scrollToSelectedFont(event.detail.fontName);
+    }
+  });
 });
 </script>
 
@@ -772,7 +1083,12 @@ onMounted(() => {
             'is-selected': isBatchMode && selectedFonts.has(font.family),
             favorite: isFavorite(font.family),
             'current-preview': font.family === currentFont,
+            dragging: isDragging && lastSelectedFont === font.family,
           }"
+          @mousedown="isBatchMode ? handleDragStart(font.family, $event) : null"
+          @touchstart="isBatchMode ? handleDragStart(font.family, $event) : null"
+          @mouseover="isBatchMode ? handleDragOver(font.family, $event) : null"
+          @touchmove="isBatchMode ? handleDragOver(font.family, $event) : null"
         >
           <div class="commercial-badge" v-if="isCommercial(font.family)">
             <svg viewBox="0 0 24 24" width="16" height="16">
@@ -806,19 +1122,6 @@ onMounted(() => {
               }"
             >
               {{ font.family }}
-              <div v-if="isBatchMode" class="selection-indicator">
-                <svg
-                  v-if="selectedFonts.has(font.family)"
-                  viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
-                >
-                  <path
-                    fill="currentColor"
-                    d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"
-                  />
-                </svg>
-              </div>
             </div>
             <div
               class="font-sample"
@@ -839,6 +1142,19 @@ onMounted(() => {
             </button>
           </div>
           <div class="font-card-actions">
+            <div v-if="isBatchMode" class="selection-indicator">
+              <svg
+                v-if="selectedFonts.has(font.family)"
+                viewBox="0 0 24 24"
+                width="16"
+                height="16"
+              >
+                <path
+                  fill="currentColor"
+                  d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"
+                />
+              </svg>
+            </div>
             <button
               class="action-btn commercial-btn"
               @click.stop="toggleCommercial(font.family)"
@@ -898,48 +1214,108 @@ onMounted(() => {
     </div>
 
     <!-- 批量操作工具栏 -->
-    <div
-      v-if="isBatchMode && selectedFonts.size > 0"
-      class="batch-toolbar compatibility-fix"
-    >
-      <div class="batch-info">已选择 {{ selectedFonts.size }} 个字体</div>
-      <div class="batch-actions">
-        <button class="batch-btn" @click="batchFavorite">
-          <svg viewBox="0 0 24 24" width="16" height="16">
-            <path
-              fill="currentColor"
-              d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
-            />
-          </svg>
-          批量收藏
-        </button>
-        <button class="batch-btn" @click="batchUnfavorite">
-          <svg viewBox="0 0 24 24" width="16" height="16">
-            <path
-              fill="currentColor"
-              d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
-            />
-          </svg>
-          取消收藏
-        </button>
-        <button class="batch-btn" @click="batchCommercial">
-          <svg viewBox="0 0 24 24" width="16" height="16">
-            <path
-              fill="currentColor"
-              d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-            />
-          </svg>
-          标记商用
-        </button>
-        <button class="batch-btn" @click="batchUncommercial">
-          <svg viewBox="0 0 24 24" width="16" height="16">
-            <path
-              fill="currentColor"
-              d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-            />
-          </svg>
-          取消商用
-        </button>
+    <div v-if="isBatchMode" class="batch-toolbar compatibility-fix">
+      <div class="batch-toolbar-row">
+        <div class="batch-info">
+          <span v-if="selectedFonts.size > 0"
+            >已选择 {{ selectedFonts.size }} 个字体</span
+          >
+          <span v-else>未选择字体</span>
+        </div>
+        <div class="selection-controls">
+          <button class="tool-btn" @click="selectAll" title="全选当前列表字体">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <path
+                fill="currentColor"
+                d="M3 5h2V3H3v2zm0 8h2v-2H3v2zm4 8h2v-2H7v2zM3 9h2V7H3v2zm10-6h-2v2h2V3zm6 0v2h2V3h-2zm-6 18h2v-2h-2v2zm-8-8h2v-2H5v2zm0-4h2V7H5v2zm8 8h2v-2h-2v2zm4 4h2v-2h-2v2zm-4-16h2V3h-2v2zm8 2h2V3h-2v2zm0 8h2v-2h-2v2zm0 8h2v-2h-2v2zm-4-4h2v-2h-2v2zm0-16h2V3h-2v2zm8 8h2v-2h-2v2zm0-8h2v-2h-2v2zm-4 8h2v-2h-2v2zm-8 8h2v-2H7v2z"
+              />
+            </svg>
+            全选
+          </button>
+          <button class="tool-btn" @click="invertSelection" title="反选当前列表字体">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <path
+                fill="currentColor"
+                d="M3,3v18h18V3H3z M19,19H5V5h14V19z M13,17h-2v-2h2V17z M13,13h-2v-2h2V13z M13,9h-2V7h2V9z"
+              />
+            </svg>
+            反选
+          </button>
+          <div class="separator"></div>
+          <div class="hint">
+            <span class="hint-text">提示: 按住Shift键可框选多个字体</span>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="selectedFonts.size > 0" class="batch-toolbar-row">
+        <div class="batch-actions">
+          <button class="batch-btn" @click="batchFavorite">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <path
+                fill="currentColor"
+                d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+              />
+            </svg>
+            批量收藏
+          </button>
+          <button class="batch-btn" @click="batchUnfavorite">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <path
+                fill="currentColor"
+                d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+              />
+            </svg>
+            取消收藏
+          </button>
+          <button class="batch-btn" @click="batchCommercial">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <path
+                fill="currentColor"
+                d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+              />
+            </svg>
+            标记商用
+          </button>
+          <button class="batch-btn" @click="batchUncommercial">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <path
+                fill="currentColor"
+                d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+              />
+            </svg>
+            取消商用
+          </button>
+          <button class="batch-btn both-action" @click="batchFavoriteAndCommercial">
+            <div class="stacked-icons">
+              <svg viewBox="0 0 24 24" width="16" height="16" class="icon-top">
+                <path
+                  fill="currentColor"
+                  d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+                />
+              </svg>
+              <svg viewBox="0 0 24 24" width="16" height="16" class="icon-bottom">
+                <path
+                  fill="currentColor"
+                  d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                />
+              </svg>
+            </div>
+            同时标记
+          </button>
+          <button class="batch-btn both-action remove" @click="batchRemoveBoth">
+            <div class="stacked-icons">
+              <svg viewBox="0 0 24 24" width="16" height="16" class="icon-top">
+                <path
+                  fill="currentColor"
+                  d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                />
+              </svg>
+            </div>
+            取消全部
+          </button>
+        </div>
+        <button class="exit-batch-btn" @click="toggleBatchMode">退出批量模式</button>
       </div>
     </div>
   </div>
@@ -1790,40 +2166,92 @@ onMounted(() => {
 }
 
 .selection-indicator {
-  display: inline-flex;
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  background-color: var(--background-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  margin-left: 8px;
-  border-radius: 50%;
-  background-color: var(--background-tertiary);
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  transition: all var(--transition-fast);
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .font-card.is-selected .selection-indicator {
   background-color: var(--primary-color);
-  color: var(--background-primary);
+  border-color: var(--primary-color);
+  color: white;
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.3);
 }
 
+/* 批量工具栏样式增强 */
 .batch-toolbar {
-  position: fixed;
+  position: sticky;
   bottom: 0;
   left: 0;
   right: 0;
   background-color: var(--background-primary);
   border-top: 1px solid var(--border-color);
-  padding: var(--spacing-md);
+  padding: var(--spacing-md) var(--spacing-lg);
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: var(--shadow-lg);
-  z-index: 100;
+  flex-direction: column;
+  gap: var(--spacing-md);
+  z-index: 30;
+  box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.1);
+  border-bottom-left-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-lg);
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .batch-info {
+  font-size: 0.9rem;
+  font-weight: 500;
   color: var(--text-secondary);
-  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.batch-info::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background-color: var(--primary-color);
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0.7);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 6px rgba(var(--primary-rgb), 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(var(--primary-rgb), 0);
+  }
 }
 
 .batch-actions {
@@ -2585,6 +3013,218 @@ onMounted(() => {
   100% {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+/* 拖动时的高亮样式 */
+.font-card.dragging {
+  box-shadow: 0 0 0 2px var(--primary-color);
+  transform: translateY(-2px);
+  transition: none; /* 拖动时禁用过渡效果，使选择更加流畅 */
+}
+
+/* 批量操作工具栏增强 */
+.batch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-sm);
+}
+
+.batch-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  background-color: var(--background-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.batch-btn:hover {
+  background-color: var(--background-tertiary);
+  transform: translateY(-2px);
+}
+
+/* 同时标记按钮样式 */
+.batch-btn.both-action {
+  background-color: var(--primary-color-10);
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+.batch-btn.both-action:hover {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.batch-btn.both-action.remove {
+  background-color: var(--danger-color-10);
+  border-color: var(--danger-color);
+  color: var(--danger-color);
+}
+
+.batch-btn.both-action.remove:hover {
+  background-color: var(--danger-color);
+  color: white;
+}
+
+.stacked-icons {
+  position: relative;
+  width: 16px;
+  height: 16px;
+}
+
+.icon-top {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  z-index: 2;
+  transform: scale(0.9);
+}
+
+.icon-bottom {
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  z-index: 1;
+  transform: scale(0.8);
+}
+
+/* 增加批量模式下的字体卡片交互样式 */
+.font-card.is-selected {
+  border-color: var(--primary-color);
+  background-color: var(--primary-color-10);
+  transform: translateY(-2px);
+}
+
+/* 在批量模式下，让选中指示器更加明显 */
+.selection-indicator {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  background-color: var(--background-secondary);
+  border: 2px solid var(--border-color);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  transition: all var(--transition-fast);
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.font-card.is-selected .selection-indicator {
+  background-color: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.3);
+}
+
+/* 区域选择矩形 */
+.selection-rectangle {
+  position: absolute;
+  border: 2px dashed var(--primary-color);
+  background-color: rgba(var(--primary-rgb), 0.1);
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* 在区域内的卡片高亮 */
+.font-card.in-selection-area {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 2px rgba(var(--primary-rgb), 0.3);
+}
+
+/* 批量工具栏增强 */
+.batch-toolbar {
+  padding: var(--spacing-md);
+}
+
+.batch-toolbar-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-xs) 0;
+}
+
+.selection-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.tool-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.tool-btn:hover {
+  background-color: var(--background-tertiary);
+  color: var(--text-primary);
+}
+
+.separator {
+  width: 1px;
+  height: 24px;
+  background-color: var(--border-color);
+  margin: 0 var(--spacing-xs);
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--text-tertiary);
+  font-style: italic;
+}
+
+.exit-batch-btn {
+  padding: 6px 12px;
+  background-color: var(--background-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--danger-color);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.exit-batch-btn:hover {
+  background-color: var(--danger-color);
+  color: white;
+  border-color: var(--danger-color);
+}
+
+@media (max-width: 768px) {
+  .batch-toolbar-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .selection-controls {
+    margin-top: var(--spacing-xs);
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .batch-actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
   }
 }
 </style>
