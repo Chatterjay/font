@@ -1,8 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::Manager;
 use std::fs;
-use std::path::Path;
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -62,9 +60,13 @@ fn get_system_fonts() -> Result<Vec<FontInfo>, String> {
 
 fn main() {
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(debug_assertions)]
-            app.get_window("main").unwrap().open_devtools();
+            {
+                // 在调试模式下，使用_app以避免警告
+                let window = _app.get_window("main").unwrap();
+                window.open_devtools();
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![get_system_fonts])
