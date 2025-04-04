@@ -27,7 +27,7 @@ jobs:
         run: npm ci
 
       - name: Build the app
-        run: npm run build
+        run: npm run tauri build
 
       - name: Get package version
         id: package_version
