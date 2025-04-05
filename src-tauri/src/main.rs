@@ -97,13 +97,20 @@ async fn check_update(app_handle: &tauri::AppHandle, window: &tauri::Window) -> 
     match app_handle.updater().check().await {
         Ok(update) => {
             if update.is_update_available() {
-                // 有更新可用，发送事件给前端
-                // 前端会处理更新的显示和安装
-                // 注意: 我们不在这里直接显示更新UI，让JS端来统一处理
-                println!("发现更新: {}", update.latest_version());
-                window
-                    .emit("update-available", Some(update.latest_version()))
-                    .expect("failed to emit update-available event");
+                // 获取当前版本和可用版本
+                let current_version = app_handle.package_info().version.clone();
+                let available_version = update.latest_version();
+                
+                // 比较版本号，确保只有更高版本才触发更新
+                if compare_versions(&available_version, &current_version) > 0 {
+                    // 有更新可用，发送事件给前端
+                    println!("发现更新: {} (当前版本: {})", available_version, current_version);
+                    window
+                        .emit("update-available", Some(available_version))
+                        .expect("failed to emit update-available event");
+                } else {
+                    println!("检测到的版本 {} 不比当前版本 {} 更新，跳过更新", available_version, current_version);
+                }
             } else {
                 println!("没有发现更新");
             }
@@ -114,4 +121,33 @@ async fn check_update(app_handle: &tauri::AppHandle, window: &tauri::Window) -> 
             Err(Box::new(e))
         }
     }
+}
+
+// 版本比较辅助函数
+#[cfg(not(debug_assertions))]
+fn compare_versions(version_a: &str, version_b: &str) -> i32 {
+    let parse_version = |version: &str| -> Vec<u32> {
+        let version = version.trim_start_matches('v');
+        version.split('.')
+            .filter_map(|part| part.parse::<u32>().ok())
+            .collect()
+    };
+    
+    let version_a_parts = parse_version(version_a);
+    let version_b_parts = parse_version(version_b);
+    
+    let max_len = std::cmp::max(version_a_parts.len(), version_b_parts.len());
+    
+    for i in 0..max_len {
+        let a_part = version_a_parts.get(i).copied().unwrap_or(0);
+        let b_part = version_b_parts.get(i).copied().unwrap_or(0);
+        
+        if a_part > b_part {
+            return 1;
+        } else if a_part < b_part {
+            return -1;
+        }
+    }
+    
+    0 // 版本相同
 } 
