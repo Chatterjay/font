@@ -9,7 +9,7 @@ import SettingsSidebar from "./components/SettingsSidebar.vue";
 import AppActions from "./components/AppActions.vue";
 import UpdateNotifier from "./components/UpdateNotifier.vue";
 import { saveToStorage, getFromStorage } from "./utils/storage";
-import { STORAGE_KEYS, LAYOUT_MODES, APP_INFO } from "./constants";
+import { STORAGE_KEYS, LAYOUT_MODES, APP_INFO } from "./constants/index.js";
 import { invoke } from "@tauri-apps/api/tauri";
 import BatchSelectableFontList from "./components/BatchSelectableFontList.vue";
 import UpdateNotification from "./components/UpdateNotification.vue";
@@ -239,6 +239,8 @@ const checkForUpdate = async () => {
                   :current-font="selectedFont"
                   @select-font="selectFontAndSwitchTab"
                   @clear-search="clearSearchQuery"
+                  @toggle-favorite="toggleFavorite"
+                  @toggle-commercial="toggleCommercial"
                 />
               </div>
             </div>
@@ -343,6 +345,8 @@ const checkForUpdate = async () => {
                   :current-font="selectedFont"
                   @select-font="selectFontAndSwitchTab"
                   @clear-search="clearSearchQuery"
+                  @toggle-favorite="toggleFavorite"
+                  @toggle-commercial="toggleCommercial"
                 />
               </div>
             </div>

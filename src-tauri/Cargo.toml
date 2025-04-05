@@ -1,6 +1,6 @@
 [package]
 name = "font-viewer"
-version = "1.0.3"
+version = "1.0.4"
 description = "A desktop font viewer application"
 authors = ["you"]
 edition = "2021"

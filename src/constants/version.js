@@ -5,7 +5,7 @@
 
 // 当前版本 - 更新此处会自动更新所有配置文件中的版本号
 // 格式: vX.Y.Z，带前缀v
-export const CURRENT_VERSION = 'v1.0.3';
+export const CURRENT_VERSION = 'v1.0.4';
 
 /**
  * 版本历史记录
@@ -14,8 +14,15 @@ export const CURRENT_VERSION = 'v1.0.3';
  */
 export const VERSION_HISTORY = [
     {
+        version: 'v1.0.4',
+        date: '2025-04-05',
+        changes: [
+            { type: 'fix', text: '修复收藏按钮点击无反应的问题' }
+        ]
+    },
+    {
         version: 'v1.0.3',
-        date: '2024-05-01',
+        date: '2025-04-05',
         changes: [
             { type: 'feature', text: '添加集中式版本管理系统' },
             { type: 'improvement', text: '优化更新通知组件' },
@@ -24,7 +31,7 @@ export const VERSION_HISTORY = [
     },
     {
         version: 'v1.0.2',
-        date: '2023-11-15',
+        date: '2025-04-04',
         changes: [
             { type: 'feature', text: '添加设置' },
             { type: 'improvement', text: '优化排版' },
@@ -33,7 +40,7 @@ export const VERSION_HISTORY = [
     },
     {
         version: 'v1.0.1',
-        date: '2023-10-20',
+        date: '2025-04-04',
         changes: [
             { type: 'improvement', text: '重构UI和排版' },
             { type: 'improvement', text: '重构为组合式API以提高性能' },
@@ -41,7 +48,7 @@ export const VERSION_HISTORY = [
     },
     {
         version: 'v1.0.0',
-        date: '2023-09-01',
+        date: '2025-04-03',
         changes: [
             { type: 'feature', text: '初始版本发布' },
             { type: 'feature', text: '支持查看系统字体' },

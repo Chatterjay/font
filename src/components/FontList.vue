@@ -29,7 +29,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(["select-font", "clear-search"]);
+const emit = defineEmits(["select-font", "clear-search", "toggle-favorite", "toggle-commercial"]);
 
 // 字体列表 - 重命名以避免与props冲突
 const fontsList = ref(props.fonts);
@@ -60,7 +60,8 @@ const LAZY_LOAD_THRESHOLD = 100;
 const useLazyLoading = ref(false);
 // 从父组件注入收藏相关的数据和方法
 const favorites = inject("favorites", ref([]));
-const toggleFavorite = inject("toggleFavorite", () => {});
+// 直接从父组件注入toggleFavorite方法
+// const toggleFavorite = inject("toggleFavorite", () => {});
 // 商用字体标记
 const commercialFonts = inject("commercialFonts", ref(new Set()));
 // 字体总数
@@ -117,23 +118,27 @@ const isFavorite = (fontName) => {
   return Array.isArray(favorites.value) && favorites.value.includes(fontName);
 };
 
+// 切换收藏状态
+const toggleFavorite = (fontName, event) => {
+  // 触发父组件的toggleFavorite方法
+  emit("toggle-favorite", fontName);
+  
+  // 防止事件冒泡，确保只处理点击收藏按钮的事件
+  if(event) event.stopPropagation();
+};
+
 // 检查字体是否商用
 const isCommercial = (fontName) => {
   return commercialFonts.value.has(fontName);
 };
 
 // 切换商用标记
-const toggleCommercial = (fontName) => {
-  if (commercialFonts.value.has(fontName)) {
-    commercialFonts.value.delete(fontName);
-  } else {
-    commercialFonts.value.add(fontName);
-  }
-  // 保存到 localStorage
-  localStorage.setItem(
-    "commercialFonts",
-    JSON.stringify(Array.from(commercialFonts.value))
-  );
+const toggleCommercial = (fontName, event) => {
+  // 触发父组件的toggleCommercial方法
+  emit("toggle-commercial", fontName);
+  
+  // 防止事件冒泡
+  if(event) event.stopPropagation();
 };
 
 // 从 localStorage 加载商用字体列表
@@ -594,7 +599,7 @@ const toggleFontSelection = (fontName) => {
 const batchFavorite = () => {
   selectedFonts.value.forEach((fontName) => {
     if (!isFavorite(fontName)) {
-      toggleFavorite(fontName);
+      emit("toggle-favorite", fontName);
     }
   });
   toggleBatchMode();
@@ -604,7 +609,7 @@ const batchFavorite = () => {
 const batchUnfavorite = () => {
   selectedFonts.value.forEach((fontName) => {
     if (isFavorite(fontName)) {
-      toggleFavorite(fontName);
+      emit("toggle-favorite", fontName);
     }
   });
   toggleBatchMode();

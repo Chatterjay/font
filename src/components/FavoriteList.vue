@@ -34,22 +34,22 @@ const loadFont = (fontName) => {
 // 滚动到选中的字体
 const scrollToSelectedFont = (fontName) => {
   if (!fontName || favorites.value.length === 0) return;
-  
+
   // 延迟执行，确保DOM已更新
   setTimeout(() => {
     // 查找选中的字体元素
-    const fontCards = document.querySelectorAll('.favorite-card');
+    const fontCards = document.querySelectorAll(".favorite-card");
     const fontIndex = favorites.value.indexOf(fontName);
-    
+
     if (fontIndex >= 0 && fontCards[fontIndex]) {
       // 获取滚动容器
-      const container = document.querySelector('.favorites-grid');
+      const container = document.querySelector(".favorites-grid");
       if (container) {
         // 计算需要滚动的位置
         const cardTop = fontCards[fontIndex].offsetTop;
         container.scrollTo({
           top: cardTop,
-          behavior: 'smooth'
+          behavior: "smooth",
         });
       }
     }
@@ -57,11 +57,14 @@ const scrollToSelectedFont = (fontName) => {
 };
 
 // 监听selectedFont变化
-watch(() => selectedFont.value, (newFont) => {
-  if (newFont && favorites.value.includes(newFont)) {
-    scrollToSelectedFont(newFont);
+watch(
+  () => selectedFont.value,
+  (newFont) => {
+    if (newFont && favorites.value.includes(newFont)) {
+      scrollToSelectedFont(newFont);
+    }
   }
-});
+);
 
 // 初始化 Intersection Observer
 onMounted(() => {
@@ -81,10 +84,14 @@ onMounted(() => {
   itemRefs.value.forEach((el) => {
     if (el) observer.observe(el);
   });
-  
+
   // 监听字体定位事件
-  document.addEventListener('locateFontInList', (event) => {
-    if (event.detail && event.detail.fontName && favorites.value.includes(event.detail.fontName)) {
+  document.addEventListener("locateFontInList", (event) => {
+    if (
+      event.detail &&
+      event.detail.fontName &&
+      favorites.value.includes(event.detail.fontName)
+    ) {
       scrollToSelectedFont(event.detail.fontName);
     }
   });
@@ -163,7 +170,7 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: var(--spacing-md);
-  
+
   padding-bottom: var(--spacing-sm);
   border-bottom: 1px solid var(--border-color);
 }

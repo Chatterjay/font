@@ -3,6 +3,7 @@ import { createRouter, createWebHistory } from "vue-router";
 import "./style.css";
 import App from "./App.vue";
 import { injectCssVariables } from "./utils/cssVariables.js";
+import { APP_INFO } from "./constants/index.js";
 
 // 导入Tauri API
 import { listen } from "@tauri-apps/api/event";
@@ -87,13 +88,15 @@ async function checkForUpdates() {
         if (shouldUpdate && manifest && manifest.version && manifest.currentVersion) {
             // 详细记录版本信息
             console.log(`远程版本: ${manifest.version}, 类型: ${typeof manifest.version}`);
-            console.log(`当前版本: ${manifest.currentVersion}, 类型: ${typeof manifest.currentVersion}`);
+            console.log(
+                `当前版本: ${manifest.currentVersion}, 类型: ${typeof manifest.currentVersion}`
+            );
 
             // 解析版本号，去除前缀'v'，并分割为数字数组
             const parseVersion = (version) => {
                 // 确保version是字符串
-                const versionStr = String(version).replace(/^v/i, '');
-                return versionStr.split('.').map(Number);
+                const versionStr = String(version).replace(/^v/i, "");
+                return versionStr.split(".").map(Number);
             };
 
             const newVersion = parseVersion(manifest.version);
@@ -125,7 +128,9 @@ async function checkForUpdates() {
             }
 
             // 如果有更新可用
-            console.log(`发现新版本: ${manifest.version}, 当前版本: ${manifest.currentVersion}`);
+            console.log(
+                `发现新版本: ${manifest.version}, 当前版本: ${manifest.currentVersion}`
+            );
 
             // 获取更新日志
             try {
@@ -142,16 +147,18 @@ async function checkForUpdates() {
             hasShownUpdateNotification = true;
 
             // 触发全局更新检查事件，通知UpdateNotifier组件
-            window.dispatchEvent(new CustomEvent('check-for-updates', {
-                detail: {
-                    newVersion: manifest.version,
-                    currentVersion: manifest.currentVersion,
-                    notes: manifest.notes
-                }
-            }));
+            window.dispatchEvent(
+                new CustomEvent("check-for-updates", {
+                    detail: {
+                        newVersion: manifest.version,
+                        currentVersion: manifest.currentVersion,
+                        notes: manifest.notes,
+                    },
+                })
+            );
 
             // 设置手动检查标记，确保UpdateNotifier组件显示更新通知
-            localStorage.setItem('manualUpdateCheck', 'true');
+            localStorage.setItem("manualUpdateCheck", "true");
 
             // 从更新说明中提取简短的描述
             let shortNotes = "新版本已可用";
@@ -215,7 +222,8 @@ async function checkForUpdates() {
             try {
                 await notification.sendNotification({
                     title: "更新检查失败",
-                    body: `检查更新时出现错误: ${error.message || "未知错误"}。将在下次启动时重试。`,
+                    body: `检查更新时出现错误: ${error.message || "未知错误"
+                        }。将在下次启动时重试。`,
                 });
             } catch (notificationError) {
                 console.error("发送通知失败:", notificationError);
@@ -240,28 +248,32 @@ listen("update-available", (event) => {
             console.log(`发现新版本: ${updateInfo.version}`);
 
             // 触发全局更新检查事件，通知UpdateNotifier组件
-            window.dispatchEvent(new CustomEvent('check-for-updates', {
-                detail: {
-                    newVersion: updateInfo.version,
-                    currentVersion: updateInfo.currentVersion,
-                    notes: updateInfo.notes
-                }
-            }));
+            window.dispatchEvent(
+                new CustomEvent("check-for-updates", {
+                    detail: {
+                        newVersion: updateInfo.version,
+                        currentVersion: updateInfo.currentVersion,
+                        notes: updateInfo.notes,
+                    },
+                })
+            );
 
             // 设置手动检查标记，确保UpdateNotifier组件显示更新通知
-            localStorage.setItem('manualUpdateCheck', 'true');
+            localStorage.setItem("manualUpdateCheck", "true");
         } else {
             console.log("当前已是最新版本");
 
             // 也触发事件，通知前端没有更新
-            window.dispatchEvent(new CustomEvent('check-for-updates', {
-                detail: {
-                    newVersion: updateInfo.version,
-                    currentVersion: updateInfo.currentVersion,
-                    notes: updateInfo.notes,
-                    hasUpdate: false
-                }
-            }));
+            window.dispatchEvent(
+                new CustomEvent("check-for-updates", {
+                    detail: {
+                        newVersion: updateInfo.version,
+                        currentVersion: updateInfo.currentVersion,
+                        notes: updateInfo.notes,
+                        hasUpdate: false,
+                    },
+                })
+            );
         }
     } else {
         // 这是唯一的更新检查入口点
@@ -278,11 +290,13 @@ listen("update-error", (event) => {
         console.error("更新错误详情:", errorInfo);
 
         // 触发全局事件通知前端发生错误
-        window.dispatchEvent(new CustomEvent('update-error', {
-            detail: {
-                error: errorInfo.error
-            }
-        }));
+        window.dispatchEvent(
+            new CustomEvent("update-error", {
+                detail: {
+                    error: errorInfo.error,
+                },
+            })
+        );
     }
 });
 

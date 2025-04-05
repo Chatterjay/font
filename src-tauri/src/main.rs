@@ -4,10 +4,6 @@ use tauri::Manager;
 use std::fs;
 use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
-use serde_json;
-use std::path::Path;
-use std::fs::File;
-use std::io::Read;
 use chrono;
 
 // 字体信息结构
