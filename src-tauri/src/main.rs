@@ -91,21 +91,26 @@ fn main() {
 // 检查更新的函数
 #[cfg(not(debug_assertions))]
 async fn check_update(app_handle: &tauri::AppHandle, window: &tauri::Window) -> Result<(), Box<dyn std::error::Error>> {
+    // 添加短暂延迟，确保前端JS已准备好接收事件
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    
     match app_handle.updater().check().await {
         Ok(update) => {
             if update.is_update_available() {
-                // 有更新可用，显示通知
+                // 有更新可用，发送事件给前端
+                // 前端会处理更新的显示和安装
+                // 注意: 我们不在这里直接显示更新UI，让JS端来统一处理
+                println!("发现更新: {}", update.latest_version());
                 window
                     .emit("update-available", Some(update.latest_version()))
                     .expect("failed to emit update-available event");
-                
-                // 也可以通过Tauri的对话框让用户选择是否更新
-                // 通过Tauri的update系统，这些会自动处理，所以这里不需要额外代码
+            } else {
+                println!("没有发现更新");
             }
             Ok(())
         }
         Err(e) => {
-            eprintln!("Error checking for updates: {}", e);
+            eprintln!("检查更新时出错: {}", e);
             Err(Box::new(e))
         }
     }
