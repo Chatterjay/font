@@ -17,7 +17,7 @@ export const VERSION_HISTORY = [
         version: 'v1.0.6',
         date: '2025-04-05',
         changes: [
-            { type: 'feature', text: '测试更新2' }
+            { type: 'feature', text: '测试更新2移除切换布局' }
         ]
     },
     {

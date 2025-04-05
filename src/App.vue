@@ -42,11 +42,11 @@ const checkFontCompatibility = () => {
 };
 
 // 使用组合式函数
-const { 
-  fonts, 
-  loading, 
-  selectedFont, 
-  favorites, 
+const {
+  fonts,
+  loading,
+  selectedFont,
+  favorites,
   commercialFonts,
   commercialCount,
   loadFavorites,
@@ -57,7 +57,7 @@ const {
   batchRemoveCommercial,
   removeFavorite,
   handleSelectFont,
-  getSystemFonts
+  getSystemFonts,
 } = useFontManagement();
 
 const {
@@ -66,24 +66,17 @@ const {
   switchPageMode,
   loadPageMode,
   loadLayout,
-  toggleLayout
+  toggleLayout,
 } = useLayoutManagement();
 
-const {
-  searchQuery,
-  handleSearch,
-  clearSearchQuery
-} = useSearchManagement();
+const { searchQuery, handleSearch, clearSearchQuery } = useSearchManagement();
 
-const {
-  activeTab,
-  switchTab
-} = useTabManagement();
+const { activeTab, switchTab } = useTabManagement();
 
 // 处理字体选择并切换标签页
 const selectFontAndSwitchTab = (fontName) => {
   handleSelectFont(fontName);
-  
+
   // 如果不在预览标签页，切换到预览标签页以便查看字体
   if (activeTab.value !== "preview") {
     switchTab("preview", fontName);
@@ -116,10 +109,10 @@ onMounted(async () => {
   loadLayout();
   loadFavorites();
   loadCommercialFonts();
-  
+
   // 检测字体兼容性
   checkFontCompatibility();
-  
+
   // 获取系统字体
   await getSystemFonts();
 });
@@ -187,7 +180,7 @@ const checkForUpdate = async () => {
         <h1>系统字体查看器</h1>
         <div class="search-actions-container">
           <SearchBar @search="handleSearch" class="search-component" />
-          <div class="layout-switcher">
+          <!-- <div class="layout-switcher">
             <button
               class="layout-btn"
               :class="{ active: currentPage === 'horizontal' }"
@@ -216,7 +209,7 @@ const checkForUpdate = async () => {
               </svg>
               上下布局
             </button>
-          </div>
+          </div> -->
           <AppActions />
         </div>
       </header>
