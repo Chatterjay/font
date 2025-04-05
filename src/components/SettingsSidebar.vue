@@ -104,26 +104,37 @@ const checkForUpdates = async () => {
   localStorage.setItem('manualUpdateCheck', 'true');
   
   // 检查当前环境
-  console.log(`手动检查更新中...(${getEnvironment()})`);
+  console.log(`[SettingsSidebar] 手动检查更新中...(${getEnvironment()})`);
   
   try {
-    // 模拟网络请求延迟
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
     // 获取最新版本信息
     const { version: remoteVersion, hasUpdate } = await fetchLatestVersion(appVersion.value);
     
+    console.log(`[SettingsSidebar] 获取到版本信息: 远程版本=${remoteVersion}, 当前版本=${appVersion.value}, 有更新=${hasUpdate}`);
+    
     if (hasUpdate) {
       // 有新版本 - 在任何环境下都显示更新提示
-      appVersion.value = remoteVersion;
-      localStorage.setItem('appVersion', remoteVersion);
-      showToast(`已更新到最新版本 ${remoteVersion}`, 2000, 'success');
+      // 注意: 在实际生产环境中，我们不应该直接更改本地版本号，而应该提示用户下载更新
+      showToast(`发现新版本: ${remoteVersion}`, 3000, 'success');
+      
+      // 如果要触发全局更新通知，只需保持manualUpdateCheck为true
+      // 更新通知组件会自动处理其余流程
     } else {
       // 在任何环境下，手动检查时都显示版本信息
       showToast(`当前已是最新版本 ${appVersion.value}`, 2000, 'success');
+      
+      // 虽然没有更新，但为了响应用户手动检查的动作，我们保持manualUpdateCheck为true
+      // 这样更新通知组件仍然会显示已是最新版本的提示
     }
+    
+    // 刷新页面以触发UpdateNotifier组件重新检查
+    // 但要延迟以确保提示信息先显示
+    setTimeout(() => {
+      // 这里不直接刷新页面，而是触发全局更新检查事件
+      window.dispatchEvent(new CustomEvent('check-for-updates'));
+    }, 1000);
   } catch (error) {
-    console.error('手动检查更新失败:', error);
+    console.error('[SettingsSidebar] 手动检查更新失败:', error);
     showToast('检查更新失败，请稍后重试', 2000, 'error');
   }
 };

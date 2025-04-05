@@ -2,6 +2,8 @@
  * 应用常量配置
  */
 
+import { CURRENT_VERSION, VERSION_HISTORY } from './version.js';
+
 // 存储键名
 export const STORAGE_KEYS = {
     FAVORITES: 'font-viewer-favorites',
@@ -52,10 +54,18 @@ export const ANIMATION = {
 };
 
 // 应用版本
-export const APP_INITIAL_VERSION = 'v1.0.2';
+export const APP_INITIAL_VERSION = CURRENT_VERSION;
 
-// 更新日志 - 初始为空，实际内容将从更新包中获取
-export const CHANGELOG = [];
+// 更新日志 - 使用VERSION_HISTORY
+export const CHANGELOG = VERSION_HISTORY;
+
+// 应用状态
+export const APP_STATUS = {
+    INITIALIZING: 'initializing',
+    LOADING: 'loading',
+    READY: 'ready',
+    ERROR: 'error',
+};
 
 // 主题选项
 export const THEME_OPTIONS = [
@@ -98,7 +108,7 @@ export const FONT_CATEGORIES = {
 // 程序信息
 export const APP_INFO = {
     NAME: 'Font Viewer',
-    VERSION: 'v1.0.2',
+    VERSION: CURRENT_VERSION,
     AUTHOR: 'Your Name',
     REPOSITORY: 'https://github.com/yourusername/font-viewer',
     COPYRIGHT: `© ${new Date().getFullYear()} Your Name`,

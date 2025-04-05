@@ -16,6 +16,12 @@ import UpdateNotification from "./components/UpdateNotification.vue";
 import { useRouter } from "vue-router";
 import { fetchChangelogFromUpdatePackage, fetchLatestVersion } from "./utils/updateUtils";
 
+// 导入组合式函数
+import { useFontManagement } from "./composables/useFontManagement";
+import { useLayoutManagement } from "./composables/useLayoutManagement";
+import { useSearchManagement } from "./composables/useSearchManagement";
+import { useTabManagement } from "./composables/useTabManagement";
+
 // 检测字体兼容性
 const checkFontCompatibility = () => {
   // 检测字符是否在字体中正确显示
@@ -35,335 +41,91 @@ const checkFontCompatibility = () => {
   }
 };
 
-// 搜索查询
-const searchQuery = ref("");
-// 当前选中的字体
-const selectedFont = ref("");
-// 收藏的字体列表 - 提升到父组件以便共享
-const favorites = ref([]);
-// 商用字体列表
-const commercialFonts = ref(new Set());
-// 页面显示模式
-const currentPage = ref("horizontal"); // 默认使用左右布局模式
-// 布局模式
-const isSideBySide = computed(() => currentPage.value === "horizontal");
-const fonts = ref([]);
-const loading = ref(true);
-// 当前激活的标签页
-const activeTab = ref("all");
+// 使用组合式函数
+const { 
+  fonts, 
+  loading, 
+  selectedFont, 
+  favorites, 
+  commercialFonts,
+  commercialCount,
+  loadFavorites,
+  loadCommercialFonts,
+  toggleFavorite,
+  toggleCommercial,
+  batchRemoveFavorites,
+  batchRemoveCommercial,
+  removeFavorite,
+  handleSelectFont,
+  getSystemFonts
+} = useFontManagement();
 
-// 从localStorage加载收藏的字体
-const loadFavorites = () => {
-  favorites.value = getFromStorage(STORAGE_KEYS.FAVORITES, []);
-};
+const {
+  currentPage,
+  isSideBySide,
+  switchPageMode,
+  loadPageMode,
+  loadLayout,
+  toggleLayout
+} = useLayoutManagement();
 
-// 从localStorage加载商用字体
-const loadCommercialFonts = () => {
-  const savedFonts = getFromStorage(STORAGE_KEYS.COMMERCIAL_FONTS, []);
-  commercialFonts.value = new Set(savedFonts);
-};
+const {
+  searchQuery,
+  handleSearch,
+  clearSearchQuery
+} = useSearchManagement();
 
-// 保存收藏的字体到localStorage
-const saveFavorites = () => {
-  saveToStorage(STORAGE_KEYS.FAVORITES, favorites.value);
-};
+const {
+  activeTab,
+  switchTab
+} = useTabManagement();
 
-// 保存商用字体到localStorage
-const saveCommercialFonts = () => {
-  saveToStorage(STORAGE_KEYS.COMMERCIAL_FONTS, Array.from(commercialFonts.value));
-};
-
-// 切换页面模式
-const switchPageMode = (mode) => {
-  currentPage.value = mode;
-  savePageMode();
-
-  // 更新HTML元素的类名，以便应用不同的滚动行为
-  const htmlEl = document.documentElement;
-  if (mode === "vertical") {
-    htmlEl.classList.add("vertical-layout-mode");
-  } else {
-    htmlEl.classList.remove("vertical-layout-mode");
-  }
-};
-
-// 从localStorage加载页面模式
-const loadPageMode = () => {
-  const savedMode = getFromStorage(STORAGE_KEYS.PAGE_MODE, "horizontal");
-  currentPage.value = savedMode;
-};
-
-// 保存页面模式到localStorage
-const savePageMode = () => {
-  saveToStorage(STORAGE_KEYS.PAGE_MODE, currentPage.value);
-};
-
-// 切换收藏状态
-const toggleFavorite = (fontName) => {
-  if (favorites.value.includes(fontName)) {
-    favorites.value = favorites.value.filter((name) => name !== fontName);
-  } else {
-    favorites.value.push(fontName);
-  }
-  saveFavorites();
-};
-
-// 切换商用状态
-const toggleCommercial = (fontName) => {
-  if (commercialFonts.value.has(fontName)) {
-    commercialFonts.value.delete(fontName);
-  } else {
-    commercialFonts.value.add(fontName);
-  }
-  saveCommercialFonts();
-};
-
-// 批量移除收藏
-const batchRemoveFavorites = (fontNames) => {
-  fontNames.forEach((fontName) => {
-    favorites.value = favorites.value.filter((name) => name !== fontName);
-  });
-  saveFavorites();
-};
-
-// 批量移除商用标记
-const batchRemoveCommercial = (fontNames) => {
-  fontNames.forEach((fontName) => {
-    commercialFonts.value.delete(fontName);
-  });
-  saveCommercialFonts();
-};
-
-// 移除收藏
-const removeFavorite = (fontName) => {
-  favorites.value = favorites.value.filter((name) => name !== fontName);
-  saveFavorites();
-};
-
-// 处理搜索
-const handleSearch = (query) => {
-  searchQuery.value = query;
-};
-
-// 清除搜索
-const clearSearchQuery = () => {
-  // 先设置为空字符串
-  searchQuery.value = "";
-
-  // 通过触发搜索框自身的清除功能
-  // 查找搜索框组件中的清除按钮并点击它
-  setTimeout(() => {
-    const clearButton = document.querySelector(".search-input-wrapper .clear-btn");
-    if (clearButton) {
-      // 直接点击清除按钮
-      clearButton.click();
-    } else {
-      // 找不到清除按钮时，手动触发输入事件
-      const searchInput = document.querySelector(".search-input");
-      if (searchInput) {
-        // 确保搜索框值被更新
-        searchInput.value = "";
-        searchInput.dispatchEvent(new Event("input", { bubbles: true }));
-      }
-    }
-
-    // 确保FontList组件收到空查询
-    const event = new CustomEvent("search-cleared");
-    document.dispatchEvent(event);
-  }, 0);
-};
-
-// 处理字体选择
-const handleSelectFont = (fontName) => {
-  selectedFont.value = fontName;
-
+// 处理字体选择并切换标签页
+const selectFontAndSwitchTab = (fontName) => {
+  handleSelectFont(fontName);
+  
   // 如果不在预览标签页，切换到预览标签页以便查看字体
   if (activeTab.value !== "preview") {
-    activeTab.value = "preview";
+    switchTab("preview", fontName);
   }
 };
 
-// 从localStorage加载布局状态
-const loadLayout = () => {
-  const savedLayout = getFromStorage(STORAGE_KEYS.LAYOUT);
-  // 仅用于兼容旧版本的数据，新版本不使用此设置
-  if (savedLayout === LAYOUT_MODES.HORIZONTAL) {
-    currentPage.value = "horizontal";
-  } else if (savedLayout === LAYOUT_MODES.VERTICAL) {
-    currentPage.value = "vertical";
-  }
-  savePageMode(); // 保存到新的存储键中
-};
-
-// 保存布局状态到localStorage
-const saveLayout = () => {
-  // 为了兼容性保留此方法，但将数据转存到新的PAGE_MODE中
-  saveToStorage(
-    STORAGE_KEYS.LAYOUT,
-    isSideBySide.value ? LAYOUT_MODES.HORIZONTAL : LAYOUT_MODES.VERTICAL
-  );
-  savePageMode();
-};
-
-// 切换布局模式 - 兼容旧版本代码
-const toggleLayout = () => {
-  currentPage.value = currentPage.value === "horizontal" ? "vertical" : "horizontal";
-  savePageMode();
-  saveLayout(); // 同时保存旧版本数据
-};
-
-// 切换标签页
-const switchTab = (tab) => {
-  activeTab.value = tab;
-
-  // 如果有选中的字体，切换标签页后触发字体定位
-  if (selectedFont.value) {
-    // 使用微任务确保DOM已更新后再滚动到对应字体
-    setTimeout(() => {
-      const event = new CustomEvent("locateFontInList", {
-        detail: { fontName: selectedFont.value },
-      });
-      document.dispatchEvent(event);
-    }, 200);
-  }
-};
-
-// 获取系统字体
-const getSystemFonts = async () => {
-  try {
-    const result = await invoke("get_system_fonts");
-    fonts.value = result.map((font) => ({
-      name: font.name,
-      family: font.family,
-      style: font.style,
-      path: font.path,
-    }));
-    loading.value = false;
-  } catch (error) {
-    console.error("获取系统字体失败:", error);
-    loading.value = false;
-  }
-};
-
-// 计算商用字体数量
-const commercialCount = computed(() => commercialFonts.value.size);
-
-// 提供收藏相关的方法和数据给子组件
+// 为组件提供共享数据
+provide("fonts", fonts);
+provide("loading", loading);
 provide("favorites", favorites);
-provide("toggleFavorite", toggleFavorite);
-provide("removeFavorite", removeFavorite);
-
-// 提供商用字体相关的方法和数据
 provide("commercialFonts", commercialFonts);
-provide("toggleCommercial", toggleCommercial);
-
-// 提供布局相关的状态和方法
+provide("selectedFont", selectedFont);
+provide("searchQuery", searchQuery);
+provide("currentPage", currentPage);
+provide("activeTab", activeTab);
 provide("isSideBySide", isSideBySide);
 provide("toggleLayout", toggleLayout);
-provide("switchPageMode", switchPageMode);
-provide("currentPage", currentPage);
 
-// 提供当前选中的字体
-provide("selectedFont", selectedFont);
-
-// 在switchTab方法下方添加滚动到商用字体的函数
-const scrollToCommercialFont = (fontName) => {
-  if (!fontName || !commercialFonts.value.has(fontName)) return;
-
-  // 确保DOM已更新
-  setTimeout(() => {
-    // 只在商用字体标签页中执行
-    if (activeTab.value !== "commercial") return;
-
-    const fontCards = document.querySelectorAll(".commercial-wrapper .font-card");
-    const commercialArray = Array.from(commercialFonts.value);
-    const fontIndex = commercialArray.indexOf(fontName);
-
-    if (fontIndex >= 0 && fontCards[fontIndex]) {
-      const container = document.querySelector(".fonts-grid");
-      if (container) {
-        const cardTop = fontCards[fontIndex].offsetTop;
-        container.scrollTo({
-          top: cardTop,
-          behavior: "smooth",
-        });
-      }
-    }
-  }, 200);
-};
-
-// 监听Tab切换，处理字体定位
-watch(
-  () => activeTab.value,
-  (newTab) => {
-    if (
-      newTab === "commercial" &&
-      selectedFont.value &&
-      commercialFonts.value.has(selectedFont.value)
-    ) {
-      scrollToCommercialFont(selectedFont.value);
-    }
+// 监听选中字体的变化
+watch(selectedFont, (newFont) => {
+  if (newFont && activeTab.value !== "preview") {
+    switchTab("preview");
   }
-);
+});
 
-// 初始加载
-onMounted(() => {
+// 页面加载时执行的操作
+onMounted(async () => {
+  // 加载用户偏好设置
+  loadPageMode();
+  loadLayout();
   loadFavorites();
   loadCommercialFonts();
-  loadLayout();
-  loadPageMode(); // 加载页面模式
-  getSystemFonts();
+  
+  // 检测字体兼容性
   checkFontCompatibility();
-
-  // 根据当前布局模式设置HTML元素的类名
-  const htmlEl = document.documentElement;
-  if (currentPage.value === "vertical") {
-    htmlEl.classList.add("vertical-layout-mode");
-  } else {
-    htmlEl.classList.remove("vertical-layout-mode");
-  }
-
-  // 默认选择字体预览标签页
-  activeTab.value = "preview";
-
-  // 添加延迟确保DOM已经更新
-  setTimeout(() => {
-    // 找到预览标签按钮并添加初始聚焦效果
-    const previewTab = document.querySelector('.tab-btn[class*="active"]');
-    if (previewTab) {
-      previewTab.classList.add("initial-focus");
-      setTimeout(() => {
-        previewTab.classList.remove("initial-focus");
-      }, 800);
-    }
-
-    // 确保CSS变量已经正确加载
-    const rootElement = document.documentElement;
-    const computedStyle = getComputedStyle(rootElement);
-
-    // 检查必要的CSS变量是否存在，如果不存在则添加
-    if (!computedStyle.getPropertyValue("--primary-rgb").trim()) {
-      rootElement.style.setProperty("--primary-rgb", "79, 70, 229");
-    }
-    if (!computedStyle.getPropertyValue("--success-rgb").trim()) {
-      rootElement.style.setProperty("--success-rgb", "16, 185, 129");
-    }
-    if (!computedStyle.getPropertyValue("--warning-rgb").trim()) {
-      rootElement.style.setProperty("--warning-rgb", "245, 158, 11");
-    }
-    if (!computedStyle.getPropertyValue("--danger-rgb").trim()) {
-      rootElement.style.setProperty("--danger-rgb", "239, 68, 68");
-    }
-    if (!computedStyle.getPropertyValue("--accent-rgb").trim()) {
-      rootElement.style.setProperty("--accent-rgb", "139, 92, 246");
-    }
-  }, 100);
-
-  // 延迟检查更新，让应用先加载完成
-  setTimeout(() => {
-    checkForUpdate();
-  }, 3000);
+  
+  // 获取系统字体
+  await getSystemFonts();
 });
+
+// 应用版本信息
+const appVersion = computed(() => APP_INFO.VERSION);
 
 const router = useRouter();
 const showUpdateNotification = ref(false);
@@ -475,7 +237,7 @@ const checkForUpdate = async () => {
                   :search-query="searchQuery"
                   :is-side-by-side="true"
                   :current-font="selectedFont"
-                  @select-font="handleSelectFont"
+                  @select-font="selectFontAndSwitchTab"
                   @clear-search="clearSearchQuery"
                 />
               </div>
@@ -547,7 +309,7 @@ const checkForUpdate = async () => {
                       :fonts="favorites"
                       :current-font="selectedFont"
                       type="favorites"
-                      @select-font="handleSelectFont"
+                      @select-font="selectFontAndSwitchTab"
                       @remove-font="removeFavorite"
                       @batch-remove="batchRemoveFavorites"
                     />
@@ -558,7 +320,7 @@ const checkForUpdate = async () => {
                       :fonts="Array.from(commercialFonts)"
                       :current-font="selectedFont"
                       type="commercial"
-                      @select-font="handleSelectFont"
+                      @select-font="selectFontAndSwitchTab"
                       @remove-font="toggleCommercial"
                       @batch-remove="batchRemoveCommercial"
                     />
@@ -579,7 +341,7 @@ const checkForUpdate = async () => {
                   :search-query="searchQuery"
                   :is-side-by-side="false"
                   :current-font="selectedFont"
-                  @select-font="handleSelectFont"
+                  @select-font="selectFontAndSwitchTab"
                   @clear-search="clearSearchQuery"
                 />
               </div>
@@ -651,7 +413,7 @@ const checkForUpdate = async () => {
                       :fonts="favorites"
                       :current-font="selectedFont"
                       type="favorites"
-                      @select-font="handleSelectFont"
+                      @select-font="selectFontAndSwitchTab"
                       @remove-font="removeFavorite"
                       @batch-remove="batchRemoveFavorites"
                     />
@@ -662,7 +424,7 @@ const checkForUpdate = async () => {
                       :fonts="Array.from(commercialFonts)"
                       :current-font="selectedFont"
                       type="commercial"
-                      @select-font="handleSelectFont"
+                      @select-font="selectFontAndSwitchTab"
                       @remove-font="toggleCommercial"
                       @batch-remove="batchRemoveCommercial"
                     />

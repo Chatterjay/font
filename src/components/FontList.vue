@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, inject, computed, watch, onUnmounted } from "vue";
+import { useVirtualScroll } from "../composables/useVirtualScroll";
 
 const props = defineProps({
   searchQuery: {
@@ -31,7 +32,12 @@ const props = defineProps({
 const emit = defineEmits(["select-font", "clear-search"]);
 
 // 字体列表 - 重命名以避免与props冲突
-const fontsList = ref([]);
+const fontsList = ref(props.fonts);
+const { containerRef, visibleItems, wrapperStyle, scrollToFont } = useVirtualScroll(fontsList, {
+  itemHeight: 60,
+  overscan: 10
+});
+
 // 加载状态
 const isLoading = ref(false);
 // 搜索状态
@@ -982,6 +988,19 @@ watch(
     }
   }
 );
+
+// 监听外部定位字体的事件
+onMounted(() => {
+  document.addEventListener("locateFontInList", (event) => {
+    if (event.detail && event.detail.fontName) {
+      scrollToFont(event.detail.fontName);
+    }
+  });
+});
+
+onUnmounted(() => {
+  document.removeEventListener("locateFontInList", scrollToFont);
+});
 </script>
 
 <template>

@@ -2,9 +2,16 @@
 
 use tauri::Manager;
 use std::fs;
+use std::sync::{Arc, Mutex};
 use serde::{Serialize, Deserialize};
+use serde_json;
+use std::path::Path;
+use std::fs::File;
+use std::io::Read;
+use chrono;
 
-#[derive(Debug, Serialize, Deserialize)]
+// 字体信息结构
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct FontInfo {
     name: String,
     path: String,
@@ -12,51 +19,112 @@ struct FontInfo {
     style: String,
 }
 
-#[tauri::command]
-fn get_system_fonts() -> Result<Vec<FontInfo>, String> {
-    let mut fonts = Vec::new();
+// 字体缓存管理
+struct FontCache {
+    fonts: Vec<FontInfo>,
+    loaded: bool,
+}
+
+impl FontCache {
+    fn new() -> Self {
+        FontCache {
+            fonts: Vec::new(),
+            loaded: false,
+        }
+    }
     
-    // Windows 系统字体目录
-    let font_dirs = vec![
-        "C:\\Windows\\Fonts",
-        "C:\\Users\\Public\\AppData\\Local\\Microsoft\\Windows\\Fonts",
-    ];
+    fn load_fonts(&mut self) -> Result<(), String> {
+        if self.loaded {
+            return Ok(());
+        }
+        
+        // Windows 系统字体目录
+        let font_dirs = vec![
+            "C:\\Windows\\Fonts",
+            "C:\\Users\\Public\\AppData\\Local\\Microsoft\\Windows\\Fonts",
+        ];
 
-    for dir in font_dirs {
-        if let Ok(entries) = fs::read_dir(dir) {
-            for entry in entries {
-                if let Ok(entry) = entry {
-                    let path = entry.path();
-                    if path.extension().map_or(false, |ext| {
-                        ext == "ttf" || ext == "otf" || ext == "ttc" || ext == "woff" || ext == "woff2"
-                    }) {
-                        let file_name = path.file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .to_string();
-                        
-                        // 从文件名中提取字体名称和样式
-                        let name = file_name.split('.').next().unwrap_or(&file_name).to_string();
-                        let family = name.split('-').next().unwrap_or(&name).to_string();
-                        let style = if name.contains('-') {
-                            name.split('-').nth(1).unwrap_or("Regular").to_string()
-                        } else {
-                            "Regular".to_string()
-                        };
+        for dir in font_dirs {
+            if let Ok(entries) = fs::read_dir(dir) {
+                for entry in entries {
+                    if let Ok(entry) = entry {
+                        let path = entry.path();
+                        if path.extension().map_or(false, |ext| {
+                            ext == "ttf" || ext == "otf" || ext == "ttc" || ext == "woff" || ext == "woff2"
+                        }) {
+                            let file_name = path.file_name()
+                                .unwrap_or_default()
+                                .to_string_lossy()
+                                .to_string();
+                            
+                            // 从文件名中提取字体名称和样式
+                            let name = file_name.split('.').next().unwrap_or(&file_name).to_string();
+                            let family = name.split('-').next().unwrap_or(&name).to_string();
+                            let style = if name.contains('-') {
+                                name.split('-').nth(1).unwrap_or("Regular").to_string()
+                            } else {
+                                "Regular".to_string()
+                            };
 
-                        fonts.push(FontInfo {
-                            name,
-                            path: path.to_string_lossy().to_string(),
-                            family,
-                            style,
-                        });
+                            self.fonts.push(FontInfo {
+                                name,
+                                path: path.to_string_lossy().to_string(),
+                                family,
+                                style,
+                            });
+                        }
                     }
                 }
             }
         }
+        
+        self.loaded = true;
+        Ok(())
     }
+    
+    fn get_all_fonts(&mut self) -> Result<Vec<FontInfo>, String> {
+        self.load_fonts()?;
+        Ok(self.fonts.clone())
+    }
+    
+    fn get_paginated_fonts(&mut self, page: usize, page_size: usize) -> Result<Vec<FontInfo>, String> {
+        self.load_fonts()?;
+        
+        let start = page * page_size;
+        let end = (start + page_size).min(self.fonts.len());
+        
+        if start >= self.fonts.len() {
+            return Ok(Vec::new());
+        }
+        
+        Ok(self.fonts[start..end].to_vec())
+    }
+    
+    fn get_font_count(&mut self) -> Result<usize, String> {
+        self.load_fonts()?;
+        Ok(self.fonts.len())
+    }
+}
 
-    Ok(fonts)
+// 获取所有系统字体（仍然保留以向后兼容）
+#[tauri::command]
+fn get_system_fonts(font_cache: tauri::State<Arc<Mutex<FontCache>>>) -> Result<Vec<FontInfo>, String> {
+    let mut cache = font_cache.lock().unwrap();
+    cache.get_all_fonts()
+}
+
+// 分页获取系统字体
+#[tauri::command]
+fn get_paginated_fonts(page: usize, page_size: usize, font_cache: tauri::State<Arc<Mutex<FontCache>>>) -> Result<Vec<FontInfo>, String> {
+    let mut cache = font_cache.lock().unwrap();
+    cache.get_paginated_fonts(page, page_size)
+}
+
+// 获取字体总数
+#[tauri::command]
+fn get_font_count(font_cache: tauri::State<Arc<Mutex<FontCache>>>) -> Result<usize, String> {
+    let mut cache = font_cache.lock().unwrap();
+    cache.get_font_count()
 }
 
 /// 从资源或本地文件获取更新日志内容
@@ -105,6 +173,9 @@ fn get_changelog_text() -> Result<String, String> {
 }
 
 fn main() {
+    // 创建字体缓存
+    let font_cache = Arc::new(Mutex::new(FontCache::new()));
+
     tauri::Builder::default()
         .setup(|app| {
             // 配置自动更新检查
@@ -128,7 +199,13 @@ fn main() {
             
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_system_fonts, get_changelog_text])
+        .manage(font_cache)
+        .invoke_handler(tauri::generate_handler![
+            get_system_fonts, 
+            get_paginated_fonts,
+            get_font_count,
+            get_changelog_text
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -141,32 +218,81 @@ async fn check_update(app_handle: &tauri::AppHandle, window: &tauri::Window) -> 
     
     match app_handle.updater().check().await {
         Ok(update) => {
+            // 获取当前版本
+            let current_version = app_handle.package_info().version.clone();
+            let current_version_str = current_version.to_string();
+            
             if update.is_update_available() {
-                // 获取当前版本和可用版本
-                let current_version = app_handle.package_info().version.clone();
+                // 获取可用版本
                 let available_version = update.latest_version();
-                
-                // 将Version类型转换为字符串
-                let current_version_str = current_version.to_string();
-                let available_version_str = available_version.clone();
+                let available_version_str = available_version;
                 
                 // 比较版本号，确保只有更高版本才触发更新
                 if compare_versions(&available_version_str, &current_version_str) > 0 {
                     // 有更新可用，发送事件给前端
                     println!("发现更新: {} (当前版本: {})", available_version, current_version);
+                    
+                    // 获取更新日志和详情
+                    let notes = update.body().map(|s| s.to_string()).unwrap_or_else(String::new);
+                    
+                    // 构建更详细的更新信息
+                    let update_info = serde_json::json!({
+                        "version": available_version_str,
+                        "currentVersion": current_version_str,
+                        "notes": notes,
+                        "date": chrono::Local::now().format("%Y-%m-%d").to_string(),
+                        "hasUpdate": true
+                    });
+                    
+                    // 发送更新事件
                     window
-                        .emit("update-available", Some(available_version))
+                        .emit("update-available", Some(update_info))
                         .expect("failed to emit update-available event");
                 } else {
                     println!("检测到的版本 {} 不比当前版本 {} 更新，跳过更新", available_version, current_version);
+                    
+                    // 即使没有更新，也发送事件给前端，通知当前已是最新版本
+                    let update_info = serde_json::json!({
+                        "version": current_version_str,
+                        "currentVersion": current_version_str,
+                        "notes": "",
+                        "hasUpdate": false
+                    });
+                    
+                    window
+                        .emit("update-available", Some(update_info))
+                        .expect("failed to emit update-available event");
                 }
             } else {
                 println!("没有发现更新");
+                
+                // 发送没有更新的事件
+                let update_info = serde_json::json!({
+                    "version": current_version_str,
+                    "currentVersion": current_version_str, 
+                    "notes": "",
+                    "hasUpdate": false
+                });
+                
+                window
+                    .emit("update-available", Some(update_info))
+                    .expect("failed to emit update-available event");
             }
             Ok(())
         }
         Err(e) => {
             eprintln!("检查更新时出错: {}", e);
+            
+            // 发送错误事件
+            let error_info = serde_json::json!({
+                "error": e.to_string(),
+                "hasUpdate": false
+            });
+            
+            window
+                .emit("update-error", Some(error_info))
+                .expect("failed to emit update-error event");
+                
             Err(Box::new(e))
         }
     }

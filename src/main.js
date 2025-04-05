@@ -141,6 +141,18 @@ async function checkForUpdates() {
             // 标记已显示通知
             hasShownUpdateNotification = true;
 
+            // 触发全局更新检查事件，通知UpdateNotifier组件
+            window.dispatchEvent(new CustomEvent('check-for-updates', {
+                detail: {
+                    newVersion: manifest.version,
+                    currentVersion: manifest.currentVersion,
+                    notes: manifest.notes
+                }
+            }));
+
+            // 设置手动检查标记，确保UpdateNotifier组件显示更新通知
+            localStorage.setItem('manualUpdateCheck', 'true');
+
             // 从更新说明中提取简短的描述
             let shortNotes = "新版本已可用";
             if (manifest.notes) {
@@ -218,8 +230,60 @@ async function checkForUpdates() {
 // 监听后端发送的更新可用事件
 listen("update-available", (event) => {
     console.log("收到更新可用事件:", event);
-    // 这是唯一的更新检查入口点
-    checkForUpdates();
+
+    if (event && event.payload) {
+        const updateInfo = event.payload;
+        console.log("更新信息详情:", updateInfo);
+
+        // 如果确实有更新可用
+        if (updateInfo.hasUpdate) {
+            console.log(`发现新版本: ${updateInfo.version}`);
+
+            // 触发全局更新检查事件，通知UpdateNotifier组件
+            window.dispatchEvent(new CustomEvent('check-for-updates', {
+                detail: {
+                    newVersion: updateInfo.version,
+                    currentVersion: updateInfo.currentVersion,
+                    notes: updateInfo.notes
+                }
+            }));
+
+            // 设置手动检查标记，确保UpdateNotifier组件显示更新通知
+            localStorage.setItem('manualUpdateCheck', 'true');
+        } else {
+            console.log("当前已是最新版本");
+
+            // 也触发事件，通知前端没有更新
+            window.dispatchEvent(new CustomEvent('check-for-updates', {
+                detail: {
+                    newVersion: updateInfo.version,
+                    currentVersion: updateInfo.currentVersion,
+                    notes: updateInfo.notes,
+                    hasUpdate: false
+                }
+            }));
+        }
+    } else {
+        // 这是唯一的更新检查入口点
+        checkForUpdates();
+    }
+});
+
+// 监听更新错误事件
+listen("update-error", (event) => {
+    console.error("收到更新错误事件:", event);
+
+    if (event && event.payload) {
+        const errorInfo = event.payload;
+        console.error("更新错误详情:", errorInfo);
+
+        // 触发全局事件通知前端发生错误
+        window.dispatchEvent(new CustomEvent('update-error', {
+            detail: {
+                error: errorInfo.error
+            }
+        }));
+    }
 });
 
 // 在开发环境中记录日志
