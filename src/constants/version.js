@@ -33,7 +33,7 @@ export const VERSION_HISTORY = [
     },
     {
         version: 'v1.0.1',
-        date: '2025-04-04',
+        date: '2023-10-20',
         changes: [
             { type: 'improvement', text: '重构UI和排版' },
             { type: 'improvement', text: '重构为组合式API以提高性能' },
@@ -41,7 +41,7 @@ export const VERSION_HISTORY = [
     },
     {
         version: 'v1.0.0',
-        date: '2025-04-03',
+        date: '2023-09-01',
         changes: [
             { type: 'feature', text: '初始版本发布' },
             { type: 'feature', text: '支持查看系统字体' },
