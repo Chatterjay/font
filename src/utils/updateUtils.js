@@ -233,6 +233,21 @@ export const fetchChangelogFromUpdatePackage = async () => {
             // 在生产环境中，尝试从更新包中获取更新日志
             console.log('[生产环境] 尝试获取真实更新日志');
 
+            // 强制重新导入版本历史以确保最新数据
+            try {
+                console.log('[生产环境] 尝试重新导入版本模块');
+                // 使用动态导入尝试重新加载版本模块
+                const versionModule = await import('../constants/version.js?t=' + new Date().getTime());
+                if (versionModule && versionModule.VERSION_HISTORY) {
+                    console.log('[生产环境] 成功重新导入版本历史:', versionModule.VERSION_HISTORY);
+                    const freshChangelog = versionModule.VERSION_HISTORY;
+                    updateChangelogData(freshChangelog);
+                    return freshChangelog;
+                }
+            } catch (e) {
+                console.warn('[生产环境] 重新导入版本模块失败:', e);
+            }
+
             // 首先尝试从Tauri API获取
             try {
                 const { invoke } = await import('@tauri-apps/api/tauri');
@@ -268,9 +283,27 @@ export const fetchChangelogFromUpdatePackage = async () => {
                 console.warn('[生产环境] 无法从GitHub获取更新日志:', e);
             }
 
-            // 如果获取失败，使用预定义的版本历史
-            console.log('[生产环境] 所有获取尝试失败，使用预定义的版本历史');
-            return CHANGELOG;
+            // 如果获取失败，重新生成一个基于当前版本的更新日志
+            console.log('[生产环境] 所有获取尝试失败，基于版本生成临时更新日志');
+
+            // 获取当前版本
+            const version = CURRENT_VERSION;
+            const now = new Date();
+            const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+            // 创建临时更新日志
+            const tempChangelog = [{
+                version,
+                date,
+                changes: [
+                    { type: 'improvement', text: '提升应用稳定性和性能' },
+                    { type: 'fix', text: '修复已知问题' }
+                ]
+            }];
+
+            console.log('[生产环境] 生成临时更新日志:', tempChangelog);
+            updateChangelogData(tempChangelog);
+            return tempChangelog;
         }
     } catch (error) {
         console.error('[生产环境] 获取更新日志失败:', error);

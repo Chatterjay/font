@@ -1,7 +1,7 @@
 {
   "name": "font-viewer",
   "private": true,
-  "version": "1.0.4",
+  "version": "1.0.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,7 +11,9 @@
     "desktop": "tauri dev",
     "build:desktop": "tauri build",
     "update-version": "node update-version.js",
-    "release": "node release.js"
+    "release": "node release.js",
+    "debug-update": "node debug-update.js",
+    "clean-build": "rimraf dist && npm run build"
   },
   "dependencies": {
     "@tauri-apps/api": "^1.5.0",

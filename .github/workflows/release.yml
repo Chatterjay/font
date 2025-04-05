@@ -92,7 +92,7 @@ jobs:
           $platforms = @{
             "windows-x86_64" = @{
               signature = ""
-              url = "https://github.com/Chatterjay/font-viewer/releases/download/v$version-${{ github.run_number }}/Font.Viewer_$version`_x64-setup.exe"
+              url = "https://github.com/Chatterjay/font-viewer/releases/download/v$version-${{ github.run_number }}/Font.Viewer_$version`_x64-setup.nsis.zip.sig"
             }
           }
           

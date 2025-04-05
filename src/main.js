@@ -52,6 +52,52 @@ app.mount("#app");
 let isCheckingForUpdates = false;
 let hasShownUpdateNotification = false;
 
+// 清理本地缓存，确保使用最新版本
+const clearCacheOnUpdate = async () => {
+    try {
+        // 获取上次启动的版本号
+        const lastVersion = localStorage.getItem('lastRunVersion');
+        const currentVersion = APP_INFO.VERSION;
+
+        console.log(`版本检查: 当前版本=${currentVersion}, 上次运行版本=${lastVersion || '未知'}`);
+
+        // 如果版本不同，清理缓存
+        if (lastVersion && lastVersion !== currentVersion) {
+            console.log('检测到版本更新，清理缓存...');
+
+            // 清除可能影响更新的缓存项
+            localStorage.removeItem('updateInfo');
+            localStorage.removeItem('lastUpdateCheck');
+
+            // 重置更新通知标志
+            localStorage.removeItem('manualUpdateCheck');
+
+            // 强制更新资源
+            try {
+                if ('serviceWorker' in navigator) {
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (let registration of registrations) {
+                        await registration.update();
+                        console.log('已更新Service Worker');
+                    }
+                }
+            } catch (e) {
+                console.warn('更新Service Worker失败:', e);
+            }
+
+            console.log('缓存清理完成');
+        }
+
+        // 保存当前版本作为最后运行版本
+        localStorage.setItem('lastRunVersion', currentVersion);
+    } catch (error) {
+        console.error('清理缓存失败:', error);
+    }
+};
+
+// 在应用初始化时调用
+clearCacheOnUpdate();
+
 // 检查更新函数
 async function checkForUpdates() {
     // 环境检查
