@@ -11,7 +11,7 @@
     "desktop": "tauri dev",
     "build:desktop": "tauri build",
     "update-version": "node update-version.js",
-    "release": "node update-version.js && git add . && git commit -m \"chore: update version to $npm_package_version\" && git tag -a v$npm_package_version -m 'Release v$npm_package_version' && git push origin v$npm_package_version"
+    "release": "node release.js"
   },
   "dependencies": {
     "@tauri-apps/api": "^1.5.0",
