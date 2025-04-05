@@ -1,6 +1,8 @@
 import { createApp } from "vue";
+import { createRouter, createWebHistory } from "vue-router";
 import "./style.css";
 import App from "./App.vue";
+import { injectCssVariables } from "./utils/cssVariables.js";
 
 // 导入Tauri API
 import { listen } from '@tauri-apps/api/event';
@@ -8,8 +10,39 @@ import { checkUpdate, installUpdate } from '@tauri-apps/api/updater';
 import { relaunch } from '@tauri-apps/api/process';
 import { notification } from '@tauri-apps/api';
 
+// 导入视图组件
+import UpdateView from "./views/UpdateView.vue";
+import ChangelogView from "./views/ChangelogView.vue";
+
+// 创建路由实例
+const router = createRouter({
+    history: createWebHistory(),
+    routes: [
+        {
+            path: "/",
+            name: "home"
+        },
+        {
+            path: "/update",
+            name: "update",
+            component: UpdateView
+        },
+        {
+            path: "/changelog",
+            name: "changelog",
+            component: ChangelogView
+        }
+    ]
+});
+
+// 注入CSS变量
+injectCssVariables();
+
 // 创建应用实例
 const app = createApp(App);
+
+// 使用路由
+app.use(router);
 
 // 挂载应用
 app.mount("#app");

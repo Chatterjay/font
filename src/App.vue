@@ -1,15 +1,20 @@
 <script setup>
-import { ref, provide, onMounted, computed, watch } from "vue";
+import { ref, provide, onMounted, computed, watch, reactive, nextTick } from "vue";
 import FontList from "./components/FontList.vue";
 import FontPreview from "./components/FontPreview.vue";
 import FavoriteList from "./components/FavoriteList.vue";
 import SearchBar from "./components/SearchBar.vue";
 import ThemeToggle from "./components/ThemeToggle.vue";
+import SettingsSidebar from "./components/SettingsSidebar.vue";
 import AppActions from "./components/AppActions.vue";
+import UpdateNotifier from "./components/UpdateNotifier.vue";
 import { saveToStorage, getFromStorage } from "./utils/storage";
-import { STORAGE_KEYS, LAYOUT_MODES } from "./constants";
+import { STORAGE_KEYS, LAYOUT_MODES, APP_INFO } from "./constants";
 import { invoke } from "@tauri-apps/api/tauri";
 import BatchSelectableFontList from "./components/BatchSelectableFontList.vue";
+import UpdateNotification from "./components/UpdateNotification.vue";
+import { useRouter } from "vue-router";
+import { fetchChangelogFromUpdatePackage, fetchLatestVersion } from "./utils/updateUtils";
 
 // 检测字体兼容性
 const checkFontCompatibility = () => {
@@ -38,8 +43,10 @@ const selectedFont = ref("");
 const favorites = ref([]);
 // 商用字体列表
 const commercialFonts = ref(new Set());
+// 页面显示模式
+const currentPage = ref("horizontal"); // 默认使用左右布局模式
 // 布局模式
-const isSideBySide = ref(true);
+const isSideBySide = computed(() => currentPage.value === "horizontal");
 const fonts = ref([]);
 const loading = ref(true);
 // 当前激活的标签页
@@ -66,6 +73,31 @@ const saveCommercialFonts = () => {
   saveToStorage(STORAGE_KEYS.COMMERCIAL_FONTS, Array.from(commercialFonts.value));
 };
 
+// 切换页面模式
+const switchPageMode = (mode) => {
+  currentPage.value = mode;
+  savePageMode();
+
+  // 更新HTML元素的类名，以便应用不同的滚动行为
+  const htmlEl = document.documentElement;
+  if (mode === "vertical") {
+    htmlEl.classList.add("vertical-layout-mode");
+  } else {
+    htmlEl.classList.remove("vertical-layout-mode");
+  }
+};
+
+// 从localStorage加载页面模式
+const loadPageMode = () => {
+  const savedMode = getFromStorage(STORAGE_KEYS.PAGE_MODE, "horizontal");
+  currentPage.value = savedMode;
+};
+
+// 保存页面模式到localStorage
+const savePageMode = () => {
+  saveToStorage(STORAGE_KEYS.PAGE_MODE, currentPage.value);
+};
+
 // 切换收藏状态
 const toggleFavorite = (fontName) => {
   if (favorites.value.includes(fontName)) {
@@ -88,7 +120,7 @@ const toggleCommercial = (fontName) => {
 
 // 批量移除收藏
 const batchRemoveFavorites = (fontNames) => {
-  fontNames.forEach(fontName => {
+  fontNames.forEach((fontName) => {
     favorites.value = favorites.value.filter((name) => name !== fontName);
   });
   saveFavorites();
@@ -96,7 +128,7 @@ const batchRemoveFavorites = (fontNames) => {
 
 // 批量移除商用标记
 const batchRemoveCommercial = (fontNames) => {
-  fontNames.forEach(fontName => {
+  fontNames.forEach((fontName) => {
     commercialFonts.value.delete(fontName);
   });
   saveCommercialFonts();
@@ -134,7 +166,7 @@ const clearSearchQuery = () => {
         searchInput.dispatchEvent(new Event("input", { bubbles: true }));
       }
     }
-    
+
     // 确保FontList组件收到空查询
     const event = new CustomEvent("search-cleared");
     document.dispatchEvent(event);
@@ -154,21 +186,30 @@ const handleSelectFont = (fontName) => {
 // 从localStorage加载布局状态
 const loadLayout = () => {
   const savedLayout = getFromStorage(STORAGE_KEYS.LAYOUT);
-  isSideBySide.value = savedLayout === LAYOUT_MODES.HORIZONTAL;
+  // 仅用于兼容旧版本的数据，新版本不使用此设置
+  if (savedLayout === LAYOUT_MODES.HORIZONTAL) {
+    currentPage.value = "horizontal";
+  } else if (savedLayout === LAYOUT_MODES.VERTICAL) {
+    currentPage.value = "vertical";
+  }
+  savePageMode(); // 保存到新的存储键中
 };
 
 // 保存布局状态到localStorage
 const saveLayout = () => {
+  // 为了兼容性保留此方法，但将数据转存到新的PAGE_MODE中
   saveToStorage(
     STORAGE_KEYS.LAYOUT,
     isSideBySide.value ? LAYOUT_MODES.HORIZONTAL : LAYOUT_MODES.VERTICAL
   );
+  savePageMode();
 };
 
-// 切换布局模式
+// 切换布局模式 - 兼容旧版本代码
 const toggleLayout = () => {
-  isSideBySide.value = !isSideBySide.value;
-  saveLayout();
+  currentPage.value = currentPage.value === "horizontal" ? "vertical" : "horizontal";
+  savePageMode();
+  saveLayout(); // 同时保存旧版本数据
 };
 
 // 切换标签页
@@ -219,6 +260,8 @@ provide("toggleCommercial", toggleCommercial);
 // 提供布局相关的状态和方法
 provide("isSideBySide", isSideBySide);
 provide("toggleLayout", toggleLayout);
+provide("switchPageMode", switchPageMode);
+provide("currentPage", currentPage);
 
 // 提供当前选中的字体
 provide("selectedFont", selectedFont);
@@ -268,8 +311,17 @@ onMounted(() => {
   loadFavorites();
   loadCommercialFonts();
   loadLayout();
+  loadPageMode(); // 加载页面模式
   getSystemFonts();
   checkFontCompatibility();
+
+  // 根据当前布局模式设置HTML元素的类名
+  const htmlEl = document.documentElement;
+  if (currentPage.value === "vertical") {
+    htmlEl.classList.add("vertical-layout-mode");
+  } else {
+    htmlEl.classList.remove("vertical-layout-mode");
+  }
 
   // 默认选择字体预览标签页
   activeTab.value = "preview";
@@ -306,58 +358,122 @@ onMounted(() => {
       rootElement.style.setProperty("--accent-rgb", "139, 92, 246");
     }
   }, 100);
+
+  // 延迟检查更新，让应用先加载完成
+  setTimeout(() => {
+    checkForUpdate();
+  }, 3000);
 });
+
+const router = useRouter();
+const showUpdateNotification = ref(false);
+const newVersion = ref("");
+const changelog = ref([]);
+
+// 检查更新
+const checkForUpdate = async () => {
+  try {
+    // 获取版本信息
+    const versionInfo = await fetchLatestVersion(APP_INFO.VERSION);
+
+    if (versionInfo.hasUpdate) {
+      // 有更新，显示通知
+      newVersion.value = versionInfo.version;
+
+      // 获取更新日志
+      const updateChangelog = await fetchChangelogFromUpdatePackage();
+      changelog.value = updateChangelog;
+
+      // 显示更新通知
+      showUpdateNotification.value = true;
+    }
+  } catch (error) {
+    console.error("检查更新失败:", error);
+  }
+};
 </script>
 
 <template>
-  <div class="app-container" :class="{ 'side-by-side': isSideBySide }">
-    <div class="sidebar">
-      <div class="logo-container">
-        <h1 class="app-logo compatibility-fix">字体查看器</h1>
-      </div>
-      <div class="sidebar-actions">
-        <button
-          class="sidebar-btn"
-          :class="{ active: isSideBySide }"
-          @click="toggleLayout"
-          title="切换布局"
-        >
-          <svg viewBox="0 0 24 24" width="20" height="20">
-            <path
-              fill="currentColor"
-              d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"
-            />
-          </svg>
-          <span>{{ isSideBySide ? "上下布局" : "左右布局" }}</span>
-          <div class="layout-indicator">
-            <div class="indicator-dot" :class="{ active: isSideBySide }"></div>
-          </div>
-        </button>
-        <ThemeToggle class="sidebar-item" />
-        <AppActions class="sidebar-item" />
-      </div>
-    </div>
+  <div
+    class="app-container"
+    :class="{
+      'horizontal-layout': currentPage === 'horizontal',
+      'vertical-layout': currentPage === 'vertical',
+    }"
+  >
+    <!-- 设置侧边栏组件 -->
+    <SettingsSidebar />
 
-    <div class="main-content">
+    <!-- 更新提示组件 -->
+    <UpdateNotification
+      v-if="showUpdateNotification"
+      :current-version="APP_INFO.VERSION"
+      :new-version="newVersion"
+      :changelog="changelog"
+    />
+
+    <!-- 使用路由视图 -->
+    <router-view v-slot="{ Component }">
+      <transition name="fade" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </router-view>
+
+    <!-- 主页内容 -->
+    <div class="main-content" v-if="$route.path === '/'">
       <header class="app-header">
         <h1>系统字体查看器</h1>
-        <p class="app-description">预览、搜索和收藏您喜欢的字体</p>
-        <SearchBar @search="handleSearch" class="search-component" />
+        <div class="search-actions-container">
+          <SearchBar @search="handleSearch" class="search-component" />
+          <div class="layout-switcher">
+            <button
+              class="layout-btn"
+              :class="{ active: currentPage === 'horizontal' }"
+              @click="switchPageMode('horizontal')"
+              title="左右布局"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18">
+                <path
+                  fill="currentColor"
+                  d="M3 5v14h18V5H3zm16 6h-7V7h7v4zm-9 0H5V7h5v4zm-5 2h5v4H5v-4zm7 4v-4h7v4h-7z"
+                />
+              </svg>
+              左右布局
+            </button>
+            <button
+              class="layout-btn"
+              :class="{ active: currentPage === 'vertical' }"
+              @click="switchPageMode('vertical')"
+              title="上下布局"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18">
+                <path
+                  fill="currentColor"
+                  d="M3 5v14h18V5H3zm16 4H5V7h14v2zm0 4H5v-2h14v2zm0 4H5v-2h14v2z"
+                />
+              </svg>
+              上下布局
+            </button>
+          </div>
+          <AppActions />
+        </div>
       </header>
 
-      <main class="app-content" :class="{ 'side-by-side': isSideBySide }">
-        <transition name="panel-transition" mode="out-in">
-          <div
-            :key="isSideBySide ? 'side-by-side' : 'stacked'"
-            class="panels-container"
-            :class="{ 'side-by-side': isSideBySide }"
-          >
+      <!-- 使用transition组件添加过渡动画 -->
+      <transition name="layout-fade" mode="out-in">
+        <!-- 水平布局页面 -->
+        <main
+          v-if="currentPage === 'horizontal'"
+          key="horizontal"
+          class="app-content horizontal-layout"
+        >
+          <div class="panels-container horizontal">
             <div class="left-panel">
               <div class="app-font-list-wrapper">
                 <FontList
                   :fonts="fonts"
                   :search-query="searchQuery"
-                  :is-side-by-side="isSideBySide"
+                  :is-side-by-side="true"
                   :current-font="selectedFont"
                   @select-font="handleSelectFont"
                   @clear-search="clearSearchQuery"
@@ -451,8 +567,112 @@ onMounted(() => {
               </div>
             </div>
           </div>
-        </transition>
-      </main>
+        </main>
+
+        <!-- 垂直布局页面 -->
+        <main v-else key="vertical" class="app-content vertical-layout">
+          <div class="panels-container vertical">
+            <div class="top-panel">
+              <div class="app-font-list-wrapper">
+                <FontList
+                  :fonts="fonts"
+                  :search-query="searchQuery"
+                  :is-side-by-side="false"
+                  :current-font="selectedFont"
+                  @select-font="handleSelectFont"
+                  @clear-search="clearSearchQuery"
+                />
+              </div>
+            </div>
+
+            <div class="bottom-panel">
+              <div class="tabs-container">
+                <div class="tabs-header">
+                  <button
+                    class="tab-btn"
+                    :class="{ active: activeTab === 'preview' }"
+                    @click="switchTab('preview')"
+                  >
+                    <svg viewBox="0 0 24 24" width="16" height="16">
+                      <path
+                        fill="currentColor"
+                        d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"
+                      />
+                    </svg>
+                    字体预览
+                  </button>
+                  <button
+                    class="tab-btn"
+                    :class="{ active: activeTab === 'favorites' }"
+                    @click="switchTab('favorites')"
+                  >
+                    <svg viewBox="0 0 24 24" width="16" height="16">
+                      <path
+                        fill="currentColor"
+                        d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"
+                      />
+                    </svg>
+                    收藏字体
+                    <span class="badge" v-if="favorites.length > 0">{{
+                      favorites.length
+                    }}</span>
+                  </button>
+                  <button
+                    class="tab-btn"
+                    :class="{ active: activeTab === 'commercial' }"
+                    @click="switchTab('commercial')"
+                  >
+                    <svg viewBox="0 0 24 24" width="16" height="16">
+                      <path
+                        fill="currentColor"
+                        d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                      />
+                    </svg>
+                    商用字体
+                    <span class="badge" v-if="commercialCount > 0">{{
+                      commercialCount
+                    }}</span>
+                  </button>
+                </div>
+
+                <div class="tab-content">
+                  <div v-if="activeTab === 'preview'" class="tab-pane">
+                    <FontPreview
+                      :selected-font="selectedFont"
+                      :is-favorite="favorites.includes(selectedFont)"
+                      :is-commercial="commercialFonts.has(selectedFont)"
+                      @toggle-favorite="toggleFavorite"
+                      @toggle-commercial="toggleCommercial"
+                    />
+                  </div>
+
+                  <div v-if="activeTab === 'favorites'" class="tab-pane">
+                    <BatchSelectableFontList
+                      :fonts="favorites"
+                      :current-font="selectedFont"
+                      type="favorites"
+                      @select-font="handleSelectFont"
+                      @remove-font="removeFavorite"
+                      @batch-remove="batchRemoveFavorites"
+                    />
+                  </div>
+
+                  <div v-if="activeTab === 'commercial'" class="tab-pane">
+                    <BatchSelectableFontList
+                      :fonts="Array.from(commercialFonts)"
+                      :current-font="selectedFont"
+                      type="commercial"
+                      @select-font="handleSelectFont"
+                      @remove-font="toggleCommercial"
+                      @batch-remove="batchRemoveCommercial"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </transition>
     </div>
   </div>
 </template>
@@ -471,8 +691,11 @@ body {
 }
 
 #app {
+  margin: 0;
+  padding: 0;
   width: 100%;
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
 }
 
 /* 标签页默认选中动画 */
@@ -553,176 +776,174 @@ body {
 
 <style scoped>
 .app-container {
-  display: grid;
-  grid-template-columns: 250px 1fr;
-  min-height: 100vh;
-}
-
-.sidebar {
-  background-color: var(--background-primary);
-  border-right: 1px solid var(--border-color);
-  padding: var(--spacing-md);
+  height: 100%;
   display: flex;
   flex-direction: column;
-  position: sticky;
-  top: 0;
-  height: 100vh;
-  box-shadow: var(--shadow-md);
-  z-index: 10;
-  overflow-y: auto;
+  overflow: hidden; /* 默认防止容器溢出 */
 }
 
-.logo-container {
-  margin-bottom: var(--spacing-xl);
-}
-
-.app-logo {
-  font-size: 1.8rem;
-  font-weight: 700;
-  margin: 0;
-  background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  text-align: center;
-}
-
-.sidebar-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-  margin-top: auto;
-}
-
-.sidebar-btn {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-  padding: var(--spacing-sm);
-  border-radius: var(--radius-md);
-  background-color: var(--background-secondary);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: var(--transition-fast);
-}
-
-.sidebar-btn:hover {
-  background-color: var(--background-tertiary);
-  transform: translateY(-2px);
-}
-
-.sidebar-btn.active {
-  background-color: var(--primary-color);
-  color: white;
-  border-color: var(--primary-color);
-}
-
-.layout-indicator {
-  margin-left: auto;
-  width: 40px;
-  height: 18px;
-  background-color: var(--background-tertiary);
-  border-radius: 10px;
-  position: relative;
-  transition: var(--transition-fast);
-}
-
-.indicator-dot {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  background-color: var(--text-tertiary);
-  border-radius: 50%;
-  top: 2px;
-  left: 2px;
-  transition: var(--transition-fast);
-}
-
-.indicator-dot.active {
-  left: 24px;
-  background-color: var(--primary-color);
-}
-
-.sidebar-item {
-  margin-top: var(--spacing-sm);
+/* 垂直布局时允许滚动 */
+.app-container.vertical-layout {
+  overflow-y: auto; /* 垂直布局时允许滚动 */
 }
 
 .main-content {
   flex: 1;
   padding: var(--spacing-lg);
   max-width: 100%;
-  overflow-x: hidden;
+  width: 100%;
+}
+
+/* 垂直布局时允许内容滚动 */
+.vertical-layout .main-content {
+  overflow-y: visible; /* 允许垂直滚动 */
+}
+
+/* 水平布局时防止内容溢出 */
+.horizontal-layout .main-content {
+  overflow: hidden;
 }
 
 .app-header {
-  margin-bottom: var(--spacing-lg);
-  text-align: center;
+  margin-bottom: var(--spacing-md);
+  padding-top: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-md);
 }
 
 .app-header h1 {
-  font-size: 2.2rem;
+  font-size: 2rem;
   font-weight: 700;
-  margin: 0 0 var(--spacing-xs);
+  margin: 0;
   background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.app-description {
-  color: var(--text-secondary);
-  margin-top: 0;
-  margin-bottom: var(--spacing-md);
+.search-actions-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: var(--spacing-md);
 }
 
 .search-component {
-  max-width: 600px;
-  margin: 0 auto;
+  width: 500px;
+  max-width: 100%;
+}
+
+/* 布局切换按钮样式 */
+.layout-switcher {
+  display: flex;
+  gap: var(--spacing-xs);
+  background-color: var(--background-secondary);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-xs);
+}
+
+.layout-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  background-color: transparent;
+  transition: all 0.2s ease;
+}
+
+.layout-btn.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.layout-btn:hover:not(.active) {
+  background-color: var(--background-tertiary);
+  color: var(--primary-color);
 }
 
 .app-content {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
+  height: calc(100% - 150px); /* 考虑到头部的高度 */
 }
 
-.panels-container {
+/* 垂直布局内容区不限制高度 */
+.vertical-layout.app-content {
+  height: auto;
+  min-height: calc(100% - 150px);
+}
+
+/* 水平布局样式 */
+.panels-container.horizontal {
+  display: flex;
+  flex-direction: row;
+  gap: var(--spacing-lg);
+  transition: all 0.5s ease;
+  overflow: hidden;
+  height: calc(100vh - 200px);
+  align-items: flex-start;
+}
+
+.horizontal-layout .left-panel,
+.horizontal-layout .right-panel {
+  flex: 1;
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  transition: all 0.5s ease;
+  min-height: calc(100vh - 220px);
+  max-height: calc(100vh - 220px);
+}
+
+/* 垂直布局样式 */
+.panels-container.vertical {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
   transition: all 0.5s ease;
+  overflow: visible; /* 允许内容溢出，使用全局滚动条 */
+  height: auto;
+  padding-bottom: var(--spacing-xl); /* 增加底部填充，防止内容靠近底部 */
 }
 
-.panels-container.side-by-side {
-  flex-direction: row;
-  align-items: flex-start;
-}
-
-.panel-transition-enter-active,
-.panel-transition-leave-active {
-  transition: all 0.5s ease;
-}
-
-.panel-transition-enter-from,
-.panel-transition-leave-to {
-  opacity: 0;
-  transform: translateY(30px);
-}
-
-.left-panel,
-.right-panel {
-  flex: 1;
+.vertical-layout .top-panel,
+.vertical-layout .bottom-panel {
+  width: 100%;
   border-radius: var(--radius-xl);
   overflow: hidden;
   transition: all 0.5s ease;
 }
 
-.panels-container.side-by-side .left-panel,
-.panels-container.side-by-side .right-panel {
-  min-height: calc(100vh - 200px);
-  max-height: calc(100vh - 200px);
+.vertical-layout .top-panel {
+  max-height: 60vh; /* 上方面板可调整高度 */
+  min-height: 400px; /* 设置最小高度 */
+  margin-bottom: var(--spacing-lg); /* 增加底部边距 */
 }
 
-/* 修改为app-font-list-wrapper类，避免与FontList组件中的.font-list-container冲突 */
+.vertical-layout .bottom-panel {
+  flex: 1;
+  margin-bottom: var(--spacing-xl); /* 增加底部边距 */
+}
+
+/* 布局切换过渡动画 */
+.layout-fade-enter-active,
+.layout-fade-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.layout-fade-enter-from,
+.layout-fade-leave-to {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+/* 通用面板样式 */
 .app-font-list-wrapper {
   background-color: var(--background-primary);
   border-radius: var(--radius-xl);
@@ -813,9 +1034,17 @@ body {
   margin-left: var(--spacing-xs);
 }
 
-.tab-content {
+/* 水平布局的标签内容 */
+.horizontal-layout .tab-content {
   padding: var(--spacing-md);
   max-height: calc(100vh - 300px);
+  overflow-y: auto;
+}
+
+/* 垂直布局的标签内容 */
+.vertical-layout .tab-content {
+  padding: var(--spacing-md);
+  max-height: calc(50vh - 100px);
   overflow-y: auto;
 }
 
@@ -955,48 +1184,45 @@ body {
   transform: translateY(-2px);
 }
 
+/* 响应式布局 */
 @media (max-width: 1200px) {
-  .panels-container.side-by-side {
+  .panels-container.horizontal {
     flex-direction: column;
+    height: auto;
   }
 
-  .panels-container.side-by-side .left-panel,
-  .panels-container.side-by-side .right-panel {
+  .horizontal-layout .left-panel,
+  .horizontal-layout .right-panel {
     max-height: none;
+    min-height: auto;
+  }
+
+  .horizontal-layout .left-panel {
+    margin-bottom: var(--spacing-lg);
   }
 }
 
 @media (max-width: 768px) {
-  .app-container {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    top: auto;
-    height: auto;
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
-    border-right: none;
-    border-top: 1px solid var(--border-color);
-    z-index: 100;
-  }
-
-  .logo-container {
-    margin-bottom: 0;
-  }
-
-  .sidebar-actions {
-    flex-direction: row;
-    margin-top: 0;
-  }
-
   .main-content {
-    padding-bottom: 80px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .app-header {
+    padding-left: var(--spacing-sm);
+    padding-right: var(--spacing-sm);
+  }
+
+  .app-header h1 {
+    font-size: 1.6rem;
+  }
+
+  .search-actions-container {
+    flex-direction: column;
+  }
+
+  .search-component {
+    width: 100%;
   }
 }
 </style>

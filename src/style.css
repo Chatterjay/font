@@ -8,6 +8,13 @@
   --danger-color: #ef4444;
   --info-color: #3b82f6;
 
+  /* RGB变量，用于rgba */
+  --primary-rgb: 59, 130, 246;
+  --success-rgb: 16, 185, 129;
+  --warning-rgb: 245, 158, 11;
+  --danger-rgb: 239, 68, 68;
+  --info-rgb: 59, 130, 246;
+
   /* 浅色主题中性色 */
   --text-primary: #1e293b;
   --text-secondary: #64748b;
@@ -117,6 +124,18 @@
   box-sizing: border-box;
 }
 
+html {
+  height: 100%;
+  overflow: hidden;
+  /* 默认防止页面整体滚动 */
+}
+
+/* 垂直布局模式 */
+html.vertical-layout-mode {
+  overflow: auto;
+  /* 允许垂直滚动 */
+}
+
 body {
   font-family: var(--font-sans);
   line-height: 1.5;
@@ -125,12 +144,27 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background-color var(--transition-normal), color var(--transition-normal);
+  height: 100%;
+  /* 使用100%高度 */
+  overflow: hidden;
+  /* 默认防止body滚动 */
+}
+
+/* 垂直布局模式 */
+html.vertical-layout-mode body {
+  overflow: auto;
+  /* 允许垂直滚动 */
+  min-height: 100%;
 }
 
 #app {
   width: 100%;
-  min-height: 100vh;
+  min-height: 100%;
+  height: 100%;
+  /* 使用100%高度 */
   padding: var(--spacing-lg);
+  overflow: hidden;
+  /* 确保app容器不会出现滚动条 */
 }
 
 /* 滚动条样式 */

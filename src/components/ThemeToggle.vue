@@ -32,15 +32,24 @@ const calculateMenuPosition = (event) => {
   const button = event.currentTarget;
   const buttonRect = button.getBoundingClientRect();
   const menuWidth = 200; // 菜单宽度
-  const menuHeight = 200; // 预估菜单高度
+  const menuHeight = 250; // 预估菜单高度
   
-  // 检查右侧是否有足够空间
-  const rightSpace = window.innerWidth - buttonRect.right;
-  menuPosition.value.right = rightSpace >= menuWidth;
-  
-  // 检查底部是否有足够空间
-  const bottomSpace = window.innerHeight - buttonRect.bottom;
-  menuPosition.value.top = bottomSpace >= menuHeight;
+  // 在设置侧边栏中，菜单应该始终显示在下方，不论空间是否足够
+  const settingsContainer = button.closest('.settings-sidebar');
+  if (settingsContainer) {
+    // 始终在按钮下方显示
+    menuPosition.value.top = true;
+    // 判断是否要向左或向右展开
+    const rightSpace = window.innerWidth - buttonRect.right;
+    menuPosition.value.right = rightSpace < 100; // 如果右侧空间小于100px，则向左展开
+  } else {
+    // 其他情况下的默认逻辑
+    const rightSpace = window.innerWidth - buttonRect.right;
+    menuPosition.value.right = rightSpace >= menuWidth;
+    
+    const bottomSpace = window.innerHeight - buttonRect.bottom;
+    menuPosition.value.top = bottomSpace >= menuHeight;
+  }
 };
 
 // 从localStorage加载主题设置
@@ -217,6 +226,26 @@ onUnmounted(() => {
   z-index: 1000;
   transform-origin: top right;
   animation: menuAppear 0.2s ease-out;
+  max-height: 300px; /* 限制最大高度 */
+  overflow-y: auto; /* 允许内容滚动 */
+}
+
+/* 在设置侧边栏内的主题菜单需要特殊处理 */
+.settings-sidebar .theme-menu {
+  position: absolute;
+  width: 180px; /* 设置固定宽度 */
+  left: auto; /* 清除左对齐 */
+  right: 0; /* 设置为右对齐 */
+  z-index: 1010; /* 确保显示在顶层 */
+}
+
+/* 确保在较小屏幕上的正确显示 */
+@media (max-width: 360px) {
+  .theme-menu {
+    max-width: 200px;
+    right: auto !important;
+    left: 0 !important;
+  }
 }
 
 /* 根据计算的位置动态设置菜单位置 */
@@ -270,9 +299,10 @@ onUnmounted(() => {
 
 .theme-menu.top-right {
   top: calc(100% + var(--spacing-sm));
-  right: 0;
-  --origin: top right;
-  animation: menuAppearTopRight 0.2s ease-out;
+  right: auto; /* 覆盖原来的右对齐 */
+  left: 0; /* 左对齐 */
+  --origin: top left;
+  animation: menuAppearTopLeft 0.2s ease-out;
 }
 
 .theme-menu.top-left {
@@ -287,6 +317,8 @@ onUnmounted(() => {
   right: 0;
   --origin: bottom right;
   animation: menuAppearBottomRight 0.2s ease-out;
+  /* 确保在侧边栏中时不会超出屏幕底部 */
+  max-height: calc(100vh - 100px);
 }
 
 .theme-menu.bottom-left {
@@ -294,6 +326,8 @@ onUnmounted(() => {
   left: 0;
   --origin: bottom left;
   animation: menuAppearBottomLeft 0.2s ease-out;
+  /* 确保在侧边栏中时不会超出屏幕底部 */
+  max-height: calc(100vh - 100px);
 }
 
 .theme-menu-header {
@@ -404,5 +438,22 @@ onUnmounted(() => {
   .slide-fade-leave-to {
     transform: translateY(100%);
   }
+}
+
+/* 专门为设置侧边栏内的主题菜单调整样式 */
+.settings-sidebar .theme-option {
+  font-size: 0.85rem;
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.settings-sidebar .theme-menu-header {
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.settings-sidebar .theme-menu.top-left,
+.settings-sidebar .theme-menu.top-right {
+  top: 100%; /* 紧贴按钮底部 */
+  right: 0;
+  left: auto;
 }
 </style>

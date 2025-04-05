@@ -4,10 +4,14 @@
 
 // 存储键名
 export const STORAGE_KEYS = {
-    FAVORITES: 'favoriteFonts',
+    FAVORITES: 'font-viewer-favorites',
     COMMERCIAL_FONTS: 'commercialFonts',
-    THEME: 'theme',
-    LAYOUT: 'layout',
+    THEME: 'font-viewer-theme',
+    LAYOUT: 'font-viewer-layout',
+    PAGE_MODE: 'pageMode',
+    SETTINGS: 'font-viewer-settings',
+    HISTORY: 'font-viewer-history',
+    DISMISSED_TIPS: 'font-viewer-dismissed-tips',
 };
 
 // 主题模式
@@ -21,6 +25,8 @@ export const THEME_MODES = {
 export const LAYOUT_MODES = {
     VERTICAL: 'vertical',
     HORIZONTAL: 'horizontal',
+    SIDE_BY_SIDE: 'side-by-side',
+    STACKED: 'stacked',
 };
 
 // 分页配置
@@ -43,4 +49,78 @@ export const ANIMATION = {
         SLOW: 400,
     },
     EASING: 'ease-in-out',
+};
+
+// 应用版本
+export const APP_INITIAL_VERSION = 'v1.0.0';
+
+// 更新日志 - 初始为空，实际内容将从更新包中获取
+export const CHANGELOG = [];
+
+// 主题选项
+export const THEME_OPTIONS = [
+    { value: 'system', label: '跟随系统' },
+    { value: 'light', label: '浅色模式' },
+    { value: 'dark', label: '深色模式' },
+    { value: 'sepia', label: '护眼模式' }
+];
+
+// 字体大小选项
+export const FONT_SIZE_OPTIONS = [
+    { value: 12, label: '12px' },
+    { value: 14, label: '14px' },
+    { value: 16, label: '16px' },
+    { value: 18, label: '18px' },
+    { value: 20, label: '20px' },
+    { value: 24, label: '24px' },
+    { value: 28, label: '28px' },
+    { value: 32, label: '32px' },
+    { value: 36, label: '36px' },
+    { value: 42, label: '42px' },
+    { value: 48, label: '48px' },
+    { value: 64, label: '64px' },
+    { value: 72, label: '72px' },
+    { value: 96, label: '96px' },
+    { value: 120, label: '120px' },
+];
+
+// 字体分类
+export const FONT_CATEGORIES = {
+    ALL: 'all',
+    SANS_SERIF: 'sans-serif',
+    SERIF: 'serif',
+    MONOSPACE: 'monospace',
+    DISPLAY: 'display',
+    HANDWRITING: 'handwriting',
+    OTHER: 'other',
+};
+
+// 程序信息
+export const APP_INFO = {
+    NAME: 'Font Viewer',
+    VERSION: 'v1.0.1',
+    AUTHOR: 'Your Name',
+    REPOSITORY: 'https://github.com/yourusername/font-viewer',
+    COPYRIGHT: `© ${new Date().getFullYear()} Your Name`,
+};
+
+// 字体列表中每页显示的字体数量
+export const FONTS_PER_PAGE = 20;
+
+// 最大历史记录数量
+export const MAX_HISTORY_ITEMS = 50;
+
+// 默认设置
+export const DEFAULT_SETTINGS = {
+    fontSize: 36,
+    showFontFamily: true,
+    showCategory: true,
+    showPreviewText: true,
+    customPreviewText: 'AaBbCcDdEe 123456789 こんにちは 你好',
+    useCustomPreviewText: false,
+    sortFontsBy: 'name',
+    sortDirection: 'asc',
+    fontSizeSliderMin: 12,
+    fontSizeSliderMax: 72,
+    previewTextRows: 2,
 }; 

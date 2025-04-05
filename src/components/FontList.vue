@@ -1424,8 +1424,6 @@ watch(
 <style scoped>
 .font-list-container {
   width: 100%;
-  max-height: 80vh;
-  height: 80vh;
   background-color: var(--background-primary);
   transition: var(--transition-normal);
   border-radius: var(--radius-lg);
@@ -1435,9 +1433,28 @@ watch(
   position: relative;
 }
 
+/* 水平布局模式下的样式 */
 .font-list-container.side-by-side {
-  max-height: calc(100vh - 148px);
-  height: calc(100vh - 148px);
+  max-height: calc(100vh - 220px); /* 减小高度，增加底部边距 */
+  height: calc(100vh - 220px);
+}
+
+/* 垂直布局模式下的样式 */
+.font-list-container:not(.side-by-side) {
+  max-height: 58vh; /* 在垂直布局中使用视口百分比 */
+  height: 58vh;
+  border: 1px solid var(--border-color); /* 添加边框 */
+  transition: all 0.3s ease; /* 添加平滑过渡 */
+}
+
+/* 垂直布局模式下的文字和样式调整 */
+.font-list-container:not(.side-by-side) .font-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+/* 垂直布局模式下滚动时的阴影效果 */
+.font-list-container:not(.side-by-side):hover {
+  box-shadow: var(--shadow-lg);
 }
 
 .font-list-header {
@@ -1461,6 +1478,18 @@ watch(
   overflow-y: auto;
   position: relative;
   padding: var(--spacing-md);
+}
+
+/* 水平布局模式下的滚动区域样式 */
+.font-list-container.side-by-side .font-list-scrollable {
+  padding: var(--spacing-md) var(--spacing-md) var(--spacing-lg) var(--spacing-md); /* 增加底部内边距 */
+  max-height: calc(100vh - 280px); /* 减小高度，增加与边缘的间距 */
+}
+
+/* 垂直布局模式下的滚动区域样式 */
+.font-list-container:not(.side-by-side) .font-list-scrollable {
+  max-height: calc(58vh - 80px); /* 考虑标头高度 */
+  padding-bottom: var(--spacing-lg); /* 增加底部内边距 */
 }
 
 .font-list-scrollable::-webkit-scrollbar {
@@ -1636,11 +1665,15 @@ watch(
 
 .font-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--spacing-md);
-  position: relative;
-  min-height: min-content;
-  margin-bottom: var(--spacing-md);
+  padding-bottom: var(--spacing-md);
+  width: 100%;
+}
+
+/* 非side-by-side模式下可以适当调整间距 */
+.font-list-container:not(.side-by-side) .font-grid {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
 }
 
 .font-card {

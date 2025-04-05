@@ -5,19 +5,17 @@ import { ref, onMounted, onUnmounted, inject, computed } from "vue";
 const isSideBySide = inject("isSideBySide");
 const toggleLayout = inject("toggleLayout");
 
-// 右键菜单状态 - 使用reactive对象整合相关状态
-const menuState = {
-  visible: ref(false),
-  isClosing: ref(false),
-  x: ref(0),
-  y: ref(0),
-  showScrollTop: ref(false)
-};
+// 右键菜单状态 - 使用独立的ref而不是嵌套在对象中
+const menuVisible = ref(false);
+const menuIsClosing = ref(false);
+const menuX = ref(0);
+const menuY = ref(0);
+const showScrollTop = ref(false);
 
 // 使用防抖函数优化滚动检测
 const debounce = (fn, delay) => {
   let timer = null;
-  return function(...args) {
+  return function (...args) {
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       fn.apply(this, args);
@@ -29,42 +27,57 @@ const debounce = (fn, delay) => {
 // 检查是否需要显示回到顶部
 const checkScrollPosition = () => {
   const fontList = document.querySelector(".font-list-container");
-  const targetElement = document.elementFromPoint(menuState.x.value, menuState.y.value);
+  const targetElement = document.elementFromPoint(menuX.value, menuY.value);
 
   if (fontList && fontList.contains(targetElement)) {
     // 在字体列表中，检查字体列表的滚动位置
-    menuState.showScrollTop.value = fontList.scrollTop > 100;
+    showScrollTop.value = fontList.scrollTop > 100;
   } else {
     // 在其他区域，检查页面的滚动位置
-    menuState.showScrollTop.value = window.scrollY > 100;
+    showScrollTop.value = window.scrollY > 100;
   }
 };
 
 // 阻止默认右键菜单 - 使用事件委托优化性能
 const handleContextMenu = (e) => {
   e.preventDefault();
-  menuState.isClosing.value = false;
-  menuState.visible.value = true;
+  menuIsClosing.value = false;
+  menuVisible.value = true;
 
-  // 获取菜单尺寸和计算安全位置
-  const menuWidth = 200; // 菜单最小宽度
-  const menuHeight = 300; // 预估菜单高度
-
-  // 计算菜单位置，确保不超出屏幕边界
+  // 获取实际菜单尺寸和可视区域
+  const viewportHeight = window.innerHeight;
+  const viewportWidth = window.innerWidth;
+  
+  // 初始化菜单位置为点击位置
   let x = e.clientX;
   let y = e.clientY;
-
-  // 边界检查（右侧和底部）
-  if (x + menuWidth > window.innerWidth) {
-    x = window.innerWidth - menuWidth - 5; // 添加5px的安全边距
-  }
-
-  if (y + menuHeight > window.innerHeight) {
-    y = window.innerHeight - menuHeight - 5; // 添加5px的安全边距
-  }
-
-  menuState.x.value = x;
-  menuState.y.value = y;
+  
+  // 先显示菜单，再进行位置调整
+  menuX.value = x;
+  menuY.value = y;
+  
+  // 使用setTimeout确保DOM更新后再获取菜单尺寸
+  setTimeout(() => {
+    const menu = document.querySelector('.context-menu');
+    if (!menu) return;
+    
+    const menuWidth = menu.offsetWidth;
+    const menuHeight = menu.offsetHeight;
+    
+    // 右侧空间不足时，向左显示
+    if (x + menuWidth > viewportWidth) {
+      x = Math.max(0, viewportWidth - menuWidth - 5);
+    }
+    
+    // 底部空间不足时，向上显示
+    if (y + menuHeight > viewportHeight) {
+      y = Math.max(0, y - menuHeight);
+    }
+    
+    // 更新菜单位置
+    menuX.value = x;
+    menuY.value = y;
+  }, 0);
 
   // 检查是否需要显示回到顶部
   checkScrollPosition();
@@ -72,33 +85,33 @@ const handleContextMenu = (e) => {
 
 // 关闭菜单 - 优化动画结束处理
 const closeMenu = () => {
-  if (menuState.visible.value && !menuState.isClosing.value) {
-    menuState.isClosing.value = true;
+  if (menuVisible.value && !menuIsClosing.value) {
+    menuIsClosing.value = true;
     setTimeout(() => {
-      menuState.visible.value = false;
-      menuState.isClosing.value = false;
+      menuVisible.value = false;
+      menuIsClosing.value = false;
     }, 200);
   }
 };
 
 // 检查当前是否有可用的字体名称 - 使用computed优化重复计算
 const hasFontName = computed(() => {
-  if (!menuState.visible.value) return false;
-  
+  if (!menuVisible.value) return false;
+
   // 优先检查右键点击处是否在字体卡片内
-  const element = document.elementFromPoint(menuState.x.value, menuState.y.value);
-  if (element?.closest('.font-card')) {
+  const element = document.elementFromPoint(menuX.value, menuY.value);
+  if (element?.closest(".font-card")) {
     return true;
   }
-  
+
   // 其次检查是否在预览区域
-  return !!document.querySelector('.font-preview');
+  return !!document.querySelector(".font-preview");
 });
 
 // 回到顶部 - 增加平滑滚动体验
 const scrollToTop = () => {
   const fontList = document.querySelector(".font-list-container");
-  const targetElement = document.elementFromPoint(menuState.x.value, menuState.y.value);
+  const targetElement = document.elementFromPoint(menuX.value, menuY.value);
 
   // 如果点击位置在字体列表内，滚动字体列表
   if (fontList && fontList.contains(targetElement)) {
@@ -111,43 +124,47 @@ const scrollToTop = () => {
 };
 
 // 修改showToast函数，使其更加可靠和统一化
-const showToast = (message, duration = 2000, type = 'info') => {
+const showToast = (message, duration = 2000, type = "info") => {
   // 检查是否已有toast，避免创建多个
-  let toast = document.querySelector('.app-copy-toast');
-  
+  let toast = document.querySelector(".app-copy-toast");
+
   // 确定toast的样式类
-  const typeClass = type === 'error' ? 'toast-error' : 
-                   type === 'success' ? 'toast-success' : 'toast-info';
-  
+  const typeClass =
+    type === "error"
+      ? "toast-error"
+      : type === "success"
+      ? "toast-success"
+      : "toast-info";
+
   if (toast) {
     // 重置所有类型类
-    toast.classList.remove('toast-error', 'toast-success', 'toast-info');
+    toast.classList.remove("toast-error", "toast-success", "toast-info");
     // 更新已有toast的内容、类型和显示状态
     toast.textContent = message;
     toast.classList.add(typeClass);
-    toast.classList.add('show');
+    toast.classList.add("show");
   } else {
     // 创建新的toast
-    toast = document.createElement('div');
+    toast = document.createElement("div");
     toast.className = `app-copy-toast ${typeClass}`;
     toast.textContent = message;
     document.body.appendChild(toast);
-    
+
     // 使用requestAnimationFrame确保DOM更新后添加show类
     requestAnimationFrame(() => {
-      toast.classList.add('show');
+      toast.classList.add("show");
     });
   }
-  
+
   // 清除可能已存在的定时器
   if (toast._hideTimeout) {
     clearTimeout(toast._hideTimeout);
   }
-  
+
   // 设置自动隐藏
   toast._hideTimeout = setTimeout(() => {
-    toast.classList.remove('show');
-    
+    toast.classList.remove("show");
+
     // 移除DOM元素以避免内存泄漏
     setTimeout(() => {
       if (toast && toast.parentNode) {
@@ -167,42 +184,44 @@ const exportConfig = async () => {
       theme: localStorage.getItem("theme") || "system",
       layout: localStorage.getItem("layout") || "vertical",
       version: "1.0.0",
-      exportDate: new Date().toISOString()
+      exportDate: new Date().toISOString(),
     };
-    
+
     // 格式化JSON数据
     const jsonData = JSON.stringify(config, null, 2);
-    
+
     // 检测环境 - 是否在Tauri环境中运行
-    const isTauriEnv = typeof window.__TAURI__ !== 'undefined';
-    
+    const isTauriEnv = typeof window.__TAURI__ !== "undefined";
+
     if (isTauriEnv) {
       try {
         // 使用Tauri API处理文件保存
         const { save } = window.__TAURI__.dialog;
         const { writeTextFile } = window.__TAURI__.fs;
-        
+
         // 打开保存文件对话框
         const savePath = await save({
-          filters: [{
-            name: '配置文件',
-            extensions: ['json']
-          }],
-          defaultPath: 'font-viewer-config.json'
+          filters: [
+            {
+              name: "配置文件",
+              extensions: ["json"],
+            },
+          ],
+          defaultPath: "font-viewer-config.json",
         });
-        
+
         if (savePath) {
           // 使用Tauri的文件系统API写入文件
           await writeTextFile(savePath, jsonData);
-          showToast('配置已成功导出', 2000, 'success');
+          showToast("配置已成功导出", 2000, "success");
         } else {
           // 用户取消了操作
-          console.log('用户取消了导出操作');
+          console.log("用户取消了导出操作");
         }
       } catch (tauriError) {
-        console.error('Tauri导出失败:', tauriError);
+        console.error("Tauri导出失败:", tauriError);
         // 降级到浏览器API
-        showToast('Tauri导出失败，尝试使用浏览器方式导出...', 1500, 'info');
+        showToast("Tauri导出失败，尝试使用浏览器方式导出...", 1500, "info");
         exportConfigBrowser(jsonData);
       }
     } else {
@@ -211,9 +230,9 @@ const exportConfig = async () => {
     }
   } catch (error) {
     console.error("导出配置失败:", error);
-    showToast('导出配置失败，请重试', 3000, 'error');
+    showToast("导出配置失败，请重试", 3000, "error");
   }
-  
+
   closeMenu();
 };
 
@@ -222,26 +241,26 @@ const exportConfigBrowser = (jsonData) => {
   try {
     const blob = new Blob([jsonData], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    
+
     const a = document.createElement("a");
     a.href = url;
-    a.download = `font-viewer-config-${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `font-viewer-config-${new Date().toISOString().split("T")[0]}.json`;
     a.style.display = "none";
     document.body.appendChild(a);
-    
+
     // 触发下载
     a.click();
-    
+
     // 延迟清理资源
     setTimeout(() => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     }, 100);
-    
-    showToast('配置已成功导出', 2000, 'success');
+
+    showToast("配置已成功导出", 2000, "success");
   } catch (error) {
-    console.error('浏览器导出失败:', error);
-    showToast('导出配置失败，请重试', 3000, 'error');
+    console.error("浏览器导出失败:", error);
+    showToast("导出配置失败，请重试", 3000, "error");
   }
 };
 
@@ -249,23 +268,25 @@ const exportConfigBrowser = (jsonData) => {
 const importConfig = async () => {
   try {
     // 检测环境 - 是否在Tauri环境中运行
-    const isTauriEnv = typeof window.__TAURI__ !== 'undefined';
-    
+    const isTauriEnv = typeof window.__TAURI__ !== "undefined";
+
     if (isTauriEnv) {
       try {
         // 使用Tauri API处理文件选择和读取
         const { open } = window.__TAURI__.dialog;
         const { readTextFile } = window.__TAURI__.fs;
-        
+
         // 打开文件选择对话框
         const selected = await open({
-          filters: [{
-            name: '配置文件',
-            extensions: ['json']
-          }],
-          multiple: false
+          filters: [
+            {
+              name: "配置文件",
+              extensions: ["json"],
+            },
+          ],
+          multiple: false,
         });
-        
+
         if (selected) {
           // 读取所选文件内容
           const content = await readTextFile(selected);
@@ -273,12 +294,12 @@ const importConfig = async () => {
           processImportedConfig(content);
         } else {
           // 用户取消了操作
-          console.log('用户取消了导入操作');
+          console.log("用户取消了导入操作");
         }
       } catch (tauriError) {
-        console.error('Tauri导入失败:', tauriError);
+        console.error("Tauri导入失败:", tauriError);
         // 降级到浏览器API
-        showToast('Tauri导入失败，尝试使用浏览器方式导入...', 1500, 'info');
+        showToast("Tauri导入失败，尝试使用浏览器方式导入...", 1500, "info");
         importConfigBrowser();
       }
     } else {
@@ -286,43 +307,43 @@ const importConfig = async () => {
       importConfigBrowser();
     }
   } catch (error) {
-    console.error('导入配置失败:', error);
-    showToast('导入配置失败，请重试', 3000, 'error');
+    console.error("导入配置失败:", error);
+    showToast("导入配置失败，请重试", 3000, "error");
   }
-  
+
   closeMenu();
 };
 
 // 浏览器环境下的导入实现
 const importConfigBrowser = () => {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json';
-  
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".json";
+
   input.onchange = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
         // 获取文件内容
-        const content = event.target?.result || '{}';
+        const content = event.target?.result || "{}";
         // 处理配置数据
         processImportedConfig(content);
       } catch (error) {
-        console.error('读取文件失败:', error);
-        showToast('读取文件失败，请检查文件格式', 3000, 'error');
+        console.error("读取文件失败:", error);
+        showToast("读取文件失败，请检查文件格式", 3000, "error");
       }
     };
-    
+
     reader.onerror = () => {
-      showToast('读取文件失败，请重试', 3000, 'error');
+      showToast("读取文件失败，请重试", 3000, "error");
     };
-    
+
     reader.readAsText(file);
   };
-  
+
   input.click();
 };
 
@@ -331,66 +352,66 @@ const processImportedConfig = (content) => {
   try {
     // 解析JSON
     const config = JSON.parse(content);
-    
+
     // 验证配置版本
     if (!config.version) {
-      showToast('无效的配置文件，缺少版本信息', 3000, 'error');
+      showToast("无效的配置文件，缺少版本信息", 3000, "error");
       return;
     }
-    
+
     // 验证配置版本兼容性
-    if (config.version !== '1.0.0') {
-      showToast(`配置文件版本(${config.version})不兼容`, 3000, 'error');
+    if (config.version !== "1.0.0") {
+      showToast(`配置文件版本(${config.version})不兼容`, 3000, "error");
       return;
     }
-    
+
     // 验证必要的字段
     if (!Array.isArray(config.favorites) || !Array.isArray(config.commercialFonts)) {
-      showToast('配置文件缺少必要的字段', 3000, 'error');
+      showToast("配置文件缺少必要的字段", 3000, "error");
       return;
     }
-    
+
     // 更新本地存储
     const updates = [
-      ['favoriteFonts', JSON.stringify(config.favorites || [])],
-      ['commercialFonts', JSON.stringify(config.commercialFonts || [])],
-      ['theme', config.theme || 'system'],
-      ['layout', config.layout || 'vertical']
+      ["favoriteFonts", JSON.stringify(config.favorites || [])],
+      ["commercialFonts", JSON.stringify(config.commercialFonts || [])],
+      ["theme", config.theme || "system"],
+      ["layout", config.layout || "vertical"],
     ];
-    
+
     try {
       // 执行更新
       updates.forEach(([key, value]) => {
         localStorage.setItem(key, value);
       });
-      
+
       // 显示成功消息
-      showToast('配置导入成功，正在刷新页面...', 1500, 'success');
-      
+      showToast("配置导入成功，正在刷新页面...", 1500, "success");
+
       // 延迟刷新页面，以便用户看到成功消息
       setTimeout(() => {
         window.location.reload();
       }, 1500);
     } catch (storageError) {
-      console.error('本地存储更新失败:', storageError);
-      showToast('导入失败，无法更新本地存储', 3000, 'error');
+      console.error("本地存储更新失败:", storageError);
+      showToast("导入失败，无法更新本地存储", 3000, "error");
     }
   } catch (error) {
-    console.error('处理配置数据失败:', error);
-    showToast('导入失败，配置文件格式错误', 3000, 'error');
+    console.error("处理配置数据失败:", error);
+    showToast("导入失败，配置文件格式错误", 3000, "error");
   }
 };
 
-// 刷新页面 - 带确认提示
+// 刷新页面
 const refreshPage = () => {
-  closeMenu();
   window.location.reload();
+  closeMenu();
 };
 
 // 清理缓存 - 优化确认流程
 const clearCache = () => {
   closeMenu(); // 先关闭菜单避免UI卡顿
-  
+
   // 延迟显示确认对话框，确保菜单关闭动画完成
   setTimeout(() => {
     if (confirm("确定要清理所有缓存数据吗？这将清除所有收藏、商用标记和主题设置。")) {
@@ -403,39 +424,45 @@ const clearCache = () => {
 // 复制字体名称 - 优化选择器性能和提示效果
 const copyFontName = () => {
   // 尝试查找当前选中的字体元素
-  const fontPreview = document.querySelector('.font-preview');
-  const fontNameElement = fontPreview?.querySelector('.font-name');
-  const fontCard = document.elementFromPoint(menuState.x.value, menuState.y.value)?.closest('.font-card');
-  const fontCardName = fontCard?.querySelector('.font-name');
-  
-  let fontName = '';
-  
+  const fontPreview = document.querySelector(".font-preview");
+  const fontNameElement = fontPreview?.querySelector(".font-name");
+  const fontCard = document
+    .elementFromPoint(menuX.value, menuY.value)
+    ?.closest(".font-card");
+  const fontCardName = fontCard?.querySelector(".font-name");
+
+  let fontName = "";
+
   // 优先使用右键点击的字体卡片
   if (fontCardName) {
-    fontName = fontCardName.textContent?.trim() || '';
+    fontName = fontCardName.textContent?.trim() || "";
   } else if (fontNameElement) {
-    fontName = fontNameElement.textContent?.trim() || '';
+    fontName = fontNameElement.textContent?.trim() || "";
   }
-  
+
   if (fontName) {
     // 使用剪贴板API复制文本
-    navigator.clipboard.writeText(fontName)
-      .then(() => showToast('已复制字体名称: ' + fontName, 2000, 'success'))
-      .catch(err => {
-        console.error('复制失败:', err);
-        showToast('复制失败，请重试', 3000, 'error');
+    navigator.clipboard
+      .writeText(fontName)
+      .then(() => showToast("已复制字体名称: " + fontName, 2000, "success"))
+      .catch((err) => {
+        console.error("复制失败:", err);
+        showToast("复制失败，请重试", 3000, "error");
       });
   }
-  
+
   closeMenu();
 };
 
 // 生命周期钩子和事件监听优化
 onMounted(() => {
   // 使用捕获阶段来确保我们的处理程序最先执行
-  document.addEventListener("contextmenu", handleContextMenu, { capture: true, passive: false });
+  document.addEventListener("contextmenu", handleContextMenu, {
+    capture: true,
+    passive: false,
+  });
   document.addEventListener("click", closeMenu);
-  
+
   // 初始化布局
   const savedLayout = localStorage.getItem("layout");
   if (isSideBySide) {
@@ -445,70 +472,23 @@ onMounted(() => {
 
 onUnmounted(() => {
   // 清理事件监听器避免内存泄漏
-  document.removeEventListener("contextmenu", handleContextMenu, { capture: true, passive: false });
+  document.removeEventListener("contextmenu", handleContextMenu, {
+    capture: true,
+    passive: false,
+  });
   document.removeEventListener("click", closeMenu);
 });
 </script>
 
 <template>
   <div class="app-actions">
-    <button
-      class="action-btn"
-      @click="exportConfig"
-      title="导出所有配置（主题、收藏字体、商用标记）"
-    >
-      <svg viewBox="0 0 24 24" width="24" height="24">
-        <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-      </svg>
-    </button>
-    <button
-      class="action-btn"
-      @click="importConfig"
-      title="导入配置（主题、收藏字体、商用标记）"
-    >
-      <svg viewBox="0 0 24 24" width="24" height="24">
-        <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-      </svg>
-    </button>
-    <button class="action-btn" @click="clearCache" title="清理缓存">
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        width="16"
-        height="16"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M3 6h18"></path>
-        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
-        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
-      </svg>
-    </button>
-    <a
-      href="https://github.com/Chatterjay/font-viewer"
-      target="_blank"
-      rel="noopener noreferrer"
-      class="action-btn"
-      title="访问仓库"
-    >
-      <svg viewBox="0 0 24 24" width="24" height="24">
-        <path
-          fill="currentColor"
-          d="M12 2A10 10 0 0 0 2 12c0 4.42 2.87 8.17 6.84 9.5c.5.08.66-.23.66-.5v-1.69c-2.77.6-3.36-1.34-3.36-1.34c-.46-1.16-1.11-1.47-1.11-1.47c-.91-.62.07-.6.07-.6c1 .07 1.53 1.03 1.53 1.03c.87 1.52 2.34 1.07 2.91.83c.09-.65.35-1.09.63-1.34c-2.22-.25-4.55-1.11-4.55-4.92c0-1.11.38-2 1.03-2.71c-.1-.25-.45-1.29.1-2.64c0 0 .84-.27 2.75 1.02c.79-.22 1.65-.33 2.5-.33c.85 0 1.71.11 2.5.33c1.91-1.29 2.75-1.02 2.75-1.02c.55 1.35.2 2.39.1 2.64c.65.71 1.03 1.6 1.03 2.71c0 3.82-2.34 4.66-4.57 4.91c.36.31.69.92.69 1.85V21c0 .27.16.59.67.5C19.14 20.16 22 16.42 22 12A10 10 0 0 0 12 2z"
-        />
-      </svg>
-    </a>
-
     <!-- 自定义右键菜单 - 使用Teleport确保在DOM顶层 -->
     <teleport to="body">
       <div
-        v-if="menuState.visible.value"
+        v-if="menuVisible"
         class="context-menu"
-        :class="{ closing: menuState.isClosing.value }"
-        :style="{ left: menuState.x.value + 'px', top: menuState.y.value + 'px' }"
+        :class="{ closing: menuIsClosing }"
+        :style="{ left: menuX + 'px', top: menuY + 'px' }"
       >
         <div class="menu-item" @click="toggleLayout">
           <svg viewBox="0 0 24 24">
@@ -529,18 +509,6 @@ onUnmounted(() => {
           </svg>
           复制字体名称
         </div>
-        <div class="menu-item" @click="exportConfig">
-          <svg viewBox="0 0 24 24">
-            <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-          </svg>
-          导出配置
-        </div>
-        <div class="menu-item" @click="importConfig">
-          <svg viewBox="0 0 24 24">
-            <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
-          </svg>
-          导入配置
-        </div>
         <div class="menu-divider"></div>
         <div class="menu-item" @click="refreshPage">
           <svg viewBox="0 0 24 24">
@@ -551,9 +519,12 @@ onUnmounted(() => {
           </svg>
           刷新页面
         </div>
-        <div v-if="menuState.showScrollTop.value" class="menu-item" @click="scrollToTop">
+        <div v-if="showScrollTop" class="menu-item" @click="scrollToTop">
           <svg viewBox="0 0 24 24">
-            <path fill="currentColor" d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z" />
+            <path
+              fill="currentColor"
+              d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"
+            />
           </svg>
           回到顶部
         </div>
@@ -659,14 +630,30 @@ onUnmounted(() => {
 }
 
 /* 优化动画性能 - 使用更少的延迟间隔 */
-.menu-item:nth-child(1) { animation-delay: 0.03s; }
-.menu-item:nth-child(2) { animation-delay: 0.05s; }
-.menu-item:nth-child(3) { animation-delay: 0.07s; }
-.menu-item:nth-child(4) { animation-delay: 0.09s; }
-.menu-item:nth-child(5) { animation-delay: 0.11s; }
-.menu-item:nth-child(6) { animation-delay: 0.13s; }
-.menu-item:nth-child(7) { animation-delay: 0.15s; }
-.menu-item:nth-child(8) { animation-delay: 0.17s; }
+.menu-item:nth-child(1) {
+  animation-delay: 0.03s;
+}
+.menu-item:nth-child(2) {
+  animation-delay: 0.05s;
+}
+.menu-item:nth-child(3) {
+  animation-delay: 0.07s;
+}
+.menu-item:nth-child(4) {
+  animation-delay: 0.09s;
+}
+.menu-item:nth-child(5) {
+  animation-delay: 0.11s;
+}
+.menu-item:nth-child(6) {
+  animation-delay: 0.13s;
+}
+.menu-item:nth-child(7) {
+  animation-delay: 0.15s;
+}
+.menu-item:nth-child(8) {
+  animation-delay: 0.17s;
+}
 
 @keyframes itemAppear {
   from {
@@ -748,7 +735,7 @@ onUnmounted(() => {
       transform: translateY(0);
     }
   }
-  
+
   @keyframes mobileMenuDisappear {
     from {
       opacity: 1;
@@ -759,7 +746,7 @@ onUnmounted(() => {
       transform: translateY(30px);
     }
   }
-  
+
   /* 移动端菜单项加大触控区域 */
   .menu-item {
     padding: var(--spacing-md) var(--spacing-md);
@@ -821,25 +808,25 @@ onUnmounted(() => {
     transition: opacity 0.1s linear !important;
     will-change: auto !important; /* 在低性能设备上禁用动画优化 */
   }
-  
+
   .context-menu {
     transform: scale(1) !important;
   }
-  
+
   .menu-item {
     opacity: 1 !important;
     transform: none !important;
   }
-  
+
   .menu-divider {
     transform: scaleX(1) !important;
   }
-  
+
   .app-copy-toast {
     transform: translateX(-50%) !important;
     transition: opacity 0.1s linear !important;
   }
-  
+
   .app-copy-toast.show {
     transform: translateX(-50%) !important;
   }
