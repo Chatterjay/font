@@ -97,17 +97,17 @@ jobs:
           }
           
           $updateData = @{
-            version = $version
+            version = "$version"  # 确保版本符合semver格式
             notes = $changelog
             pub_date = $date
             platforms = $platforms
           } | ConvertTo-Json -Depth 5
           
           # 生成特定版本的元数据文件
-          $updateData | Out-File -FilePath font-viewer-updater.json
+          $updateData | Out-File -FilePath font-viewer-updater.json -Encoding utf8
           
           # 同时生成一个固定名称的元数据文件，用于最新版本检查
-          $updateData | Out-File -FilePath latest-version.json
+          $updateData | Out-File -FilePath latest-version.json -Encoding utf8
 
       # 上传更新元数据文件 - 使用softprops/action-gh-release@v1
       - name: Upload update metadata
@@ -118,4 +118,34 @@ jobs:
             font-viewer-updater.json
             latest-version.json
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      # 使用现有脚本对元数据进行签名
+      - name: Sign update metadata
+        shell: pwsh
+        run: |
+          # 安装GitHub CLI
+          choco install gh -y
+        
+          # 将私钥保存到文件
+          echo "${{ secrets.TAURI_PRIVATE_KEY }}" > tauri.key
+          
+          # 安装需要的工具
+          npm install -g @tauri-apps/cli
+          
+          # 使用sign-update.js脚本签名更新文件
+          VERSION_TAG="v${{ steps.package_version.outputs.version }}-${{ github.run_number }}"
+          
+          # 下载已上传的元数据文件
+          Invoke-WebRequest -Uri "https://github.com/Chatterjay/font-viewer/releases/download/$VERSION_TAG/font-viewer-updater.json" -OutFile "downloaded-updater.json"
+          
+          # 使用Node.js脚本签名
+          node scripts/sign-update.js downloaded-updater.json tauri.key "${{ secrets.TAURI_KEY_PASSWORD }}"
+          
+          # 再次上传更新后的元数据文件
+          gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+          gh release upload $VERSION_TAG downloaded-updater.json --clobber
+          
+          # 复制signed内容到latest-version.json
+          Copy-Item -Path downloaded-updater.json -Destination latest-version.json -Force
+          gh release upload $VERSION_TAG latest-version.json --clobber 
