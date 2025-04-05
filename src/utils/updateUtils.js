@@ -46,31 +46,37 @@ export const compareVersions = (versionA, versionB) => {
 };
 
 /**
- * 模拟从服务器获取最新版本
- * 实际项目中应替换为真实的API调用
+ * 从服务器获取最新版本
  * @param {string} currentVersion 当前版本
  * @returns {Promise<{version: string, hasUpdate: boolean}>} 版本信息
  */
 export const fetchLatestVersion = async (currentVersion) => {
-    // 模拟网络请求延迟
-    await new Promise(resolve => setTimeout(resolve, 800));
+    if (!isProduction()) {
+        // 在开发环境中使用模拟数据
+        await new Promise(resolve => setTimeout(resolve, 800));
+        const serverVersion = 'v1.0.2'; // 使用与当前版本相同的版本号，避免开发环境中触发更新
 
-    // 模拟服务器返回的版本号
-    const serverVersion = 'v1.0.1';
+        // 比较版本并返回结果
+        const comparisonResult = compareVersions(serverVersion, currentVersion);
+        const hasUpdate = comparisonResult > 0;
 
-    // 比较版本并返回结果
-    const comparisonResult = compareVersions(serverVersion, currentVersion);
+        console.log(`[开发环境] 版本比较: 当前版本=${currentVersion}, 服务器版本=${serverVersion}, 有更新=${hasUpdate}`);
 
-    // 只有当服务器版本大于当前版本时才有更新
-    const hasUpdate = comparisonResult > 0;
-
-    console.log(`版本比较: 当前版本=${currentVersion}, 服务器版本=${serverVersion}, 有更新=${hasUpdate}`);
-
-    return {
-        version: serverVersion,
-        hasUpdate,
-        currentVersion
-    };
+        return {
+            version: serverVersion,
+            hasUpdate,
+            currentVersion
+        };
+    } else {
+        // 在生产环境中，应该从Tauri更新器获取版本信息
+        // 这里不需要实现，因为Tauri的checkUpdate API会自动处理
+        console.log(`[生产环境] 使用Tauri更新API检查更新，当前版本: ${currentVersion}`);
+        return {
+            version: currentVersion, // 默认返回当前版本
+            hasUpdate: false, // 默认无更新，实际由Tauri API决定
+            currentVersion
+        };
+    }
 };
 
 /**
@@ -173,9 +179,15 @@ export const updateChangelogData = (changelog) => {
  */
 export const fetchChangelogFromUpdatePackage = async () => {
     try {
-        // 这是一个模拟的Markdown更新日志
-        // 在实际项目中，应该从更新包或服务器获取
-        const markdownChangelog = `
+        if (!isProduction()) {
+            // 在开发环境中使用模拟数据
+            const markdownChangelog = `
+## v1.0.2 (${new Date().toISOString().split('T')[0]})
+
+- [新功能] 改进自动更新机制
+- [优化] 优化版本比较算法
+- [修复] 修复版本检查相关问题
+
 ## v1.0.1 (2023-11-15)
 
 - [新功能] 添加自动更新功能
@@ -194,11 +206,56 @@ export const fetchChangelogFromUpdatePackage = async () => {
 - [新功能] 支持多种主题切换
 `;
 
-        // 解析Markdown并更新数据
-        const parsedChangelog = parseChangelogFromMarkdown(markdownChangelog);
-        updateChangelogData(parsedChangelog);
+            // 解析Markdown并更新数据
+            const parsedChangelog = parseChangelogFromMarkdown(markdownChangelog);
+            updateChangelogData(parsedChangelog);
+            console.log('[开发环境] 使用模拟更新日志数据');
 
-        return parsedChangelog;
+            return parsedChangelog;
+        } else {
+            // 在生产环境中，尝试从更新包中获取更新日志
+            // 这里可以通过fetch API从远程服务器获取，或使用Tauri API
+            console.log('[生产环境] 尝试获取真实更新日志');
+
+            try {
+                // 尝试从Tauri资源读取
+                const { invoke } = await import('@tauri-apps/api/tauri');
+                const changelogText = await invoke('get_changelog_text');
+                if (changelogText) {
+                    const parsedChangelog = parseChangelogFromMarkdown(changelogText);
+                    updateChangelogData(parsedChangelog);
+                    return parsedChangelog;
+                }
+            } catch (e) {
+                console.warn('无法通过Tauri API获取更新日志:', e);
+            }
+
+            // 如果Tauri调用失败，尝试从GitHub获取
+            try {
+                const response = await fetch('https://raw.githubusercontent.com/Chatterjay/font-viewer/main/CHANGELOG.md');
+                if (response.ok) {
+                    const changelogText = await response.text();
+                    const parsedChangelog = parseChangelogFromMarkdown(changelogText);
+                    updateChangelogData(parsedChangelog);
+                    return parsedChangelog;
+                }
+            } catch (e) {
+                console.warn('无法从GitHub获取更新日志:', e);
+            }
+
+            // 如果所有尝试都失败，返回一个基本的更新日志
+            const basicChangelog = [{
+                version: 'v1.0.2',
+                date: new Date().toISOString().split('T')[0],
+                changes: [
+                    { type: 'feature', text: '改进自动更新机制' },
+                    { type: 'improvement', text: '优化版本比较算法' },
+                    { type: 'fix', text: '修复版本检查相关问题' }
+                ]
+            }];
+            updateChangelogData(basicChangelog);
+            return basicChangelog;
+        }
     } catch (error) {
         console.error('获取更新日志失败:', error);
         return [];

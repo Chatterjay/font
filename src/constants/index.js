@@ -52,7 +52,7 @@ export const ANIMATION = {
 };
 
 // 应用版本
-export const APP_INITIAL_VERSION = 'v1.0.0';
+export const APP_INITIAL_VERSION = 'v1.0.2';
 
 // 更新日志 - 初始为空，实际内容将从更新包中获取
 export const CHANGELOG = [];
@@ -98,7 +98,7 @@ export const FONT_CATEGORIES = {
 // 程序信息
 export const APP_INFO = {
     NAME: 'Font Viewer',
-    VERSION: 'v1.0.1',
+    VERSION: 'v1.0.2',
     AUTHOR: 'Your Name',
     REPOSITORY: 'https://github.com/yourusername/font-viewer',
     COPYRIGHT: `© ${new Date().getFullYear()} Your Name`,

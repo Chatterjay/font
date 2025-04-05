@@ -59,6 +59,51 @@ fn get_system_fonts() -> Result<Vec<FontInfo>, String> {
     Ok(fonts)
 }
 
+/// 从资源或本地文件获取更新日志内容
+#[tauri::command]
+fn get_changelog_text() -> Result<String, String> {
+    // 在生产环境中尝试从应用资源目录读取CHANGELOG.md
+    let changelog_path = std::path::PathBuf::from("CHANGELOG.md");
+    
+    if changelog_path.exists() {
+        match fs::read_to_string(&changelog_path) {
+            Ok(content) => {
+                println!("成功从本地文件读取更新日志");
+                return Ok(content);
+            }
+            Err(e) => {
+                eprintln!("读取更新日志文件失败: {}", e);
+            }
+        }
+    }
+    
+    // 如果本地文件不存在或读取失败，返回一个基本的更新日志
+    let basic_changelog = format!(r#"
+## v1.0.2 ({})
+
+- [新功能] 改进自动更新机制
+- [优化] 优化版本比较算法
+- [修复] 修复版本检查相关问题
+
+## v1.0.1 (2023-11-15)
+
+- [新功能] 添加自动更新功能
+- [新功能] 添加更新日志查看功能
+- [优化] 优化右键菜单显示位置计算
+- [修复] 修复主题菜单在设置侧边栏中的显示问题
+
+## v1.0.0 (2023-10-01)
+
+- [新功能] 首次发布
+- [新功能] 支持系统字体浏览和预览
+- [新功能] 支持收藏字体功能
+- [新功能] 支持字体搜索功能
+"#, chrono::Local::now().format("%Y-%m-%d"));
+
+    println!("使用默认更新日志");
+    Ok(basic_changelog)
+}
+
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
@@ -83,7 +128,7 @@ fn main() {
             
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_system_fonts])
+        .invoke_handler(tauri::generate_handler![get_system_fonts, get_changelog_text])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
