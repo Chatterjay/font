@@ -103,13 +103,19 @@ jobs:
             platforms = $platforms
           } | ConvertTo-Json -Depth 5
           
+          # 生成特定版本的元数据文件
           $updateData | Out-File -FilePath font-viewer-updater.json
           
-          # 为下一步创建Release ID输出
-          echo "release_id=${{ fromJson(steps.tauri.outputs.GITHUB_RELEASE).id }}" >> $env:GITHUB_OUTPUT
+          # 同时生成一个固定名称的元数据文件，用于最新版本检查
+          $updateData | Out-File -FilePath latest-version.json
 
+      # 上传更新元数据文件 - 使用softprops/action-gh-release@v1
       - name: Upload update metadata
-        run: |
-          gh release upload v${{ steps.package_version.outputs.version }}-${{ github.run_number }} font-viewer-updater.json
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.package_version.outputs.version }}-${{ github.run_number }}
+          files: |
+            font-viewer-updater.json
+            latest-version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
