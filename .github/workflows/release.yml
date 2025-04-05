@@ -40,10 +40,18 @@ jobs:
         id: package_version
         run: echo "version=$(node -p "require('./package.json').version")" >> $env:GITHUB_OUTPUT
         shell: pwsh
+        
+      # 提取最近的提交信息，用作更新说明
+      - name: Get recent commits for changelog
+        id: recent_commits
+        shell: pwsh
+        run: |
+          $commits = git log -5 --pretty=format:"- %s (%h)" --abbrev-commit
+          $commits = $commits -join "`n"
+          echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
+          echo "$commits" >> $env:GITHUB_OUTPUT
+          echo "EOF" >> $env:GITHUB_OUTPUT
 
-      # 注意：你需要在GitHub仓库设置中添加以下密钥
-      # TAURI_PRIVATE_KEY - 从app.key文件中复制的私钥内容
-      # TAURI_KEY_PASSWORD - 创建私钥时设置的密码
       - name: Build Tauri App
         id: tauri
         uses: tauri-apps/tauri-action@v0
@@ -55,19 +63,32 @@ jobs:
           tagName: v${{ steps.package_version.outputs.version }}-${{ github.run_number }}
           releaseName: Release v${{ steps.package_version.outputs.version }}-${{ github.run_number }}
           releaseBody: |
-            自动构建版本
-            提交SHA: ${{ github.sha }}
+            ## 系统字体查看器 v${{ steps.package_version.outputs.version }}
+            
+            ### 更新内容:
+            ${{ steps.recent_commits.outputs.changelog }}
+            
             构建时间: ${{ github.event.repository.updated_at }}
+            提交SHA: ${{ github.sha }}
           releaseDraft: false
           prerelease: false
           
       # 构建更新元数据文件
       - name: Generate update metadata
+        id: metadata
         shell: pwsh
         run: |
           $version = "${{ steps.package_version.outputs.version }}"
           $date = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
-          $notes = "自动构建更新，提交SHA: ${{ github.sha }}"
+          
+          # 使用收集到的提交记录作为更新说明
+          $changelog = @"
+          ## 系统字体查看器 v$version
+          
+          ### 更新内容:
+          ${{ steps.recent_commits.outputs.changelog }}
+          "@
+          
           $platforms = @{
             "windows-x86_64" = @{
               signature = ""
@@ -77,20 +98,18 @@ jobs:
           
           $updateData = @{
             version = $version
-            notes = $notes
+            notes = $changelog
             pub_date = $date
             platforms = $platforms
           } | ConvertTo-Json -Depth 5
           
           $updateData | Out-File -FilePath font-viewer-updater.json
+          
+          # 为下一步创建Release ID输出
+          echo "release_id=${{ fromJson(steps.tauri.outputs.GITHUB_RELEASE).id }}" >> $env:GITHUB_OUTPUT
 
-      # 上传更新元数据文件
       - name: Upload update metadata
-        uses: actions/upload-release-asset@v1
+        run: |
+          gh release upload v${{ steps.package_version.outputs.version }}-${{ github.run_number }} font-viewer-updater.json
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ steps.tauri.outputs.uploadUrl }}
-          asset_path: ./font-viewer-updater.json
-          asset_name: font-viewer-updater.json
-          asset_content_type: application/json 
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

@@ -25,11 +25,26 @@ async function checkForUpdates() {
         if (shouldUpdate) {
             // 如果有更新可用
             console.log(`发现新版本: ${manifest?.version}, 当前版本: ${manifest?.currentVersion}`);
+            console.log('更新说明:', manifest?.notes);
 
-            // 显示系统通知
+            // 从更新说明中提取简短的描述
+            let shortNotes = '新版本已可用';
+            if (manifest?.notes) {
+                // 尝试从markdown格式的更新说明中提取简短描述
+                const notesLines = manifest.notes.split('\n').filter(line => line.trim() && !line.startsWith('#'));
+                if (notesLines.length > 0) {
+                    // 获取前3行作为简短描述
+                    shortNotes = notesLines.slice(0, 3).join('\n');
+                    if (notesLines.length > 3) {
+                        shortNotes += '\n...（更多更新内容）';
+                    }
+                }
+            }
+
+            // 显示带有更新说明的系统通知
             await notification.sendNotification({
-                title: '发现新版本',
-                body: `发现新版本 ${manifest?.version}，正在下载更新...`
+                title: `发现新版本 ${manifest?.version}`,
+                body: `当前版本: ${manifest?.currentVersion}\n${shortNotes}\n\n点击确认开始下载更新...`
             });
 
             // 安装更新
