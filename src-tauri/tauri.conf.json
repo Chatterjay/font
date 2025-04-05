@@ -26,6 +26,13 @@
         "writeFile": true,
         "readDir": true,
         "exists": true
+      },
+      "http": {
+        "all": false,
+        "request": true
+      },
+      "notification": {
+        "all": true
       }
     },
     "bundle": {
@@ -38,10 +45,24 @@
         "icons/128x128@2x.png",
         "icons/icon.icns",
         "icons/icon.ico"
-      ]
+      ],
+      "publisher": "Chatterjay",
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": "http://timestamp.digicert.com"
+      }
     },
     "security": {
       "csp": null
+    },
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/Chatterjay/font-viewer/releases/latest/download/font-viewer-updater.json"
+      ],
+      "dialog": true,
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU0ODdDMzA4NkY3QzVCQzQKUldURVczeHZDTU9INUdrTFdmUVVBL2RoSHF3d1QwWVlFL2x4YVZJTUJGYzBRTUkxcEQ2VEJGSHQK"
     },
     "windows": [
       {

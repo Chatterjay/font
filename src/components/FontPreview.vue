@@ -176,13 +176,15 @@ onMounted(() => {
           :class="{ active: isCommercial }"
           @click="toggleCommercial"
           :title="isCommercial ? '取消商用标记' : '标记为商用字体'"
+          type="button"
         >
-          <svg viewBox="0 0 24 24">
+          <svg viewBox="0 0 24 24" width="20" height="20">
             <path
               fill="currentColor"
               d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
             />
           </svg>
+          <span class="btn-text">{{ isCommercial ? '取消商用' : '商用字体' }}</span>
         </button>
         <button
           v-if="selectedFont"
@@ -190,8 +192,9 @@ onMounted(() => {
           :class="{ active: isFavorite }"
           @click="toggleFavorite"
           :title="isFavorite ? '取消收藏' : '收藏字体'"
+          type="button"
         >
-          <svg viewBox="0 0 24 24">
+          <svg viewBox="0 0 24 24" width="20" height="20">
             <path
               fill="currentColor"
               :d="
@@ -201,6 +204,7 @@ onMounted(() => {
               "
             />
           </svg>
+          <span class="btn-text">{{ isFavorite ? '取消收藏' : '收藏字体' }}</span>
         </button>
       </div>
     </div>
@@ -476,44 +480,69 @@ onMounted(() => {
 
 .preview-actions {
   display: flex;
-  gap: var(--spacing-xs);
+  gap: var(--spacing-sm);
 }
 
 .action-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  gap: 8px;
+  padding: 8px 16px;
   border-radius: var(--radius-lg);
   background-color: var(--background-secondary);
   border: 1px solid var(--border-color);
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all var(--transition-fast);
-}
-
-.action-btn:hover {
-  background-color: var(--background-tertiary);
-  border-color: var(--primary-color);
-  color: var(--primary-color);
-  transform: translateY(-2px);
-}
-
-.action-btn.active {
-  background-color: var(--primary-color);
-  border-color: var(--primary-color);
-  color: white;
+  font-size: 0.9rem;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .action-btn svg {
   width: 18px;
   height: 18px;
+  transition: transform 0.2s ease;
 }
 
-.action-btn.commercial-btn.active {
+.action-btn:hover {
+  background-color: var(--background-tertiary);
+  transform: translateY(-2px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+}
+
+.action-btn:hover svg {
+  transform: scale(1.2);
+}
+
+.action-btn:active {
+  transform: translateY(0px);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.action-btn.commercial-btn:hover {
+  color: var(--success-color);
+  border-color: var(--success-color);
+  background-color: rgba(var(--success-rgb), 0.1);
+}
+
+.action-btn.favorite-btn:hover {
+  color: var(--warning-color);
+  border-color: var(--warning-color);
+  background-color: rgba(var(--warning-rgb), 0.1);
+}
+
+.action-btn.active.commercial-btn {
   background-color: var(--success-color);
   border-color: var(--success-color);
+  color: white;
+}
+
+.action-btn.active.favorite-btn {
+  background-color: var(--warning-color);
+  border-color: var(--warning-color);
+  color: white;
 }
 
 .empty-preview {
@@ -986,6 +1015,16 @@ select option:nth-child(9) {
   .settings-row {
     flex-direction: column;
     gap: var(--spacing-sm);
+  }
+}
+
+@media (max-width: 768px) {
+  .action-btn .btn-text {
+    display: none;
+  }
+  
+  .action-btn {
+    padding: 8px;
   }
 }
 </style>

@@ -316,8 +316,8 @@ const loadMore = () => {
 
 // 过滤后的字体列表 - 改为计算属性
 const filteredFonts = computed(() => {
-  // 如果没有搜索关键词，返回当前加载的所有字体
-  if (!props.searchQuery) {
+  // 如果没有搜索关键词或者搜索关键词为空（只包含空格），返回当前加载的所有字体
+  if (!props.searchQuery || props.searchQuery.trim() === "") {
     // 如果之前进行过搜索，需要重置字体列表
     if (hasSearched.value) {
       resetAfterSearch();
@@ -326,7 +326,7 @@ const filteredFonts = computed(() => {
   }
 
   // 搜索关键词
-  const query = props.searchQuery.toLowerCase();
+  const query = props.searchQuery.toLowerCase().trim();
 
   // 标记已经进行过搜索
   hasSearched.value = true;
@@ -359,8 +359,11 @@ const resetAfterSearch = () => {
     // 重置页码
     currentPage.value = 1;
 
+    // 清空字体列表
+    fontsList.value = [];
+
     // 重新加载字体
-    getSystemFonts();
+    getSystemFonts(1);
   }
 };
 
@@ -372,7 +375,7 @@ const finishSearch = (results) => {
   isSearching.value = false;
 
   // 如果在搜索完成时搜索框已被清空，则立即恢复原始列表
-  if (!props.searchQuery) {
+  if (!props.searchQuery || props.searchQuery.trim() === "") {
     resetAfterSearch();
   }
 };
@@ -384,8 +387,8 @@ const performFullSearch = (query) => {
     clearTimeout(searchTimer.value);
   }
 
-  // 如果搜索字符为空，重置搜索状态
-  if (!query || query.length === 0) {
+  // 如果搜索字符为空或只包含空格，重置搜索状态
+  if (!query || query.trim().length === 0) {
     if (hasSearched.value) {
       resetAfterSearch();
     }
@@ -420,9 +423,23 @@ const performFullSearch = (query) => {
       const totalFontsCount = uniqueFonts.length;
 
       // 如果在开始搜索后搜索框已被清空，则中止搜索
-      if (!props.searchQuery) {
+      if (!props.searchQuery || props.searchQuery.trim() === "") {
         isSearching.value = false;
         resetAfterSearch();
+        return;
+      }
+
+      // 确认搜索词没有发生变化
+      const currentQuery = props.searchQuery.toLowerCase().trim();
+      if (currentQuery !== query) {
+        console.log("搜索词已变化，中止当前搜索");
+        isSearching.value = false;
+        if (!currentQuery) {
+          resetAfterSearch();
+        } else {
+          // 使用新的搜索词重新搜索
+          performFullSearch(currentQuery);
+        }
         return;
       }
 
@@ -432,7 +449,8 @@ const performFullSearch = (query) => {
         if (
           start >= allFonts.length ||
           !props.searchQuery ||
-          props.searchQuery.toLowerCase() !== query
+          props.searchQuery.trim() === "" ||
+          props.searchQuery.toLowerCase().trim() !== query
         ) {
           finishSearch(foundResults);
           return;
@@ -469,6 +487,15 @@ const performFullSearch = (query) => {
 
           // 如果还有未处理的批次，继续处理
           setTimeout(() => {
+            // 再次检查搜索是否被清除或改变
+            if (
+              !props.searchQuery ||
+              props.searchQuery.trim() === "" ||
+              props.searchQuery.toLowerCase().trim() !== query
+            ) {
+              finishSearch(results);
+              return;
+            }
             processBatch(end, allFonts, results);
           }, 10); // 短暂延迟，让UI有机会更新
         });
@@ -877,18 +904,29 @@ const checkFontCardsInArea = () => {
   });
 };
 
+// 在初始化时加载数据
 onMounted(() => {
   loadCommercialFonts();
 
   // 添加控制台信息，标记组件已经初始化
   console.log("FontList组件已初始化，开始加载系统字体...");
 
-  // 监听字体定位自定义事件
-  document.addEventListener("locateFontInList", (event) => {
+  // 创建事件处理函数引用
+  const handleLocateFontEvent = (event) => {
     if (event.detail && event.detail.fontName) {
       scrollToSelectedFont(event.detail.fontName);
     }
-  });
+  };
+
+  const handleSearchClearedEvent = () => {
+    console.log("接收到搜索清除事件");
+    if (hasSearched.value) {
+      resetAfterSearch();
+    }
+  };
+
+  // 监听字体定位自定义事件
+  document.addEventListener("locateFontInList", handleLocateFontEvent);
 
   // 添加全局鼠标抬起事件，确保即使鼠标移出元素也能停止拖动
   document.addEventListener("mouseup", handleDragEnd);
@@ -902,6 +940,9 @@ onMounted(() => {
     container.addEventListener("mouseup", endAreaSelection);
   }
 
+  // 添加搜索清除事件监听
+  document.addEventListener("search-cleared", handleSearchClearedEvent);
+
   // 先检查是否支持字体API
   if (window.queryLocalFonts) {
     console.log("检测到支持字体API，正在加载系统字体...");
@@ -911,28 +952,36 @@ onMounted(() => {
     console.error("浏览器不支持queryLocalFonts API");
     isLoading.value = false;
   }
-});
 
-// 组件销毁时清理事件监听
-onUnmounted(() => {
-  document.removeEventListener("mouseup", handleDragEnd);
-  document.removeEventListener("touchend", handleDragEnd);
+  // 组件卸载时移除事件监听
+  onUnmounted(() => {
+    // 使用相同的处理函数引用来移除事件监听器
+    document.removeEventListener("locateFontInList", handleLocateFontEvent);
+    document.removeEventListener("search-cleared", handleSearchClearedEvent);
 
-  // 清理区域选择事件
-  const container = document.querySelector(".font-list-scrollable");
-  if (container) {
-    container.removeEventListener("mousedown", startAreaSelection);
-    container.removeEventListener("mousemove", updateAreaSelection);
-    container.removeEventListener("mouseup", endAreaSelection);
-  }
+    document.removeEventListener("mouseup", handleDragEnd);
+    document.removeEventListener("touchend", handleDragEnd);
 
-  // 清理自定义事件监听
-  document.removeEventListener("locateFontInList", (event) => {
-    if (event.detail && event.detail.fontName) {
-      scrollToSelectedFont(event.detail.fontName);
+    const container = document.querySelector(".font-list-scrollable");
+    if (container) {
+      container.removeEventListener("mousedown", startAreaSelection);
+      container.removeEventListener("mousemove", updateAreaSelection);
+      container.removeEventListener("mouseup", endAreaSelection);
     }
   });
 });
+
+// 监听搜索查询变化
+watch(
+  () => props.searchQuery,
+  (newVal, oldVal) => {
+    // 当搜索查询从有内容变为空时，重置搜索状态
+    if (oldVal && oldVal.trim() !== "" && (!newVal || newVal.trim() === "")) {
+      console.log("搜索查询已清空，重置搜索状态");
+      resetAfterSearch();
+    }
+  }
+);
 </script>
 
 <template>
@@ -1093,8 +1142,7 @@ onUnmounted(() => {
         <div class="loading-spinner"></div>
         <p>正在加载系统字体...</p>
         <div v-if="loadingProgress > 0" class="progress-bar-container">
-          <div class="progress-bar" :style="{ width: `${loadingProgress}%` }"></div>
-          <span class="progress-text">{{ loadingProgress }}%</span>
+          <div class="progress-fill" :style="{ width: `${loadingProgress}%` }"></div>
         </div>
       </div>
 
@@ -1211,6 +1259,7 @@ onUnmounted(() => {
               :class="{ 'is-commercial': isCommercial(font.family) }"
               :title="isCommercial(font.family) ? '取消商用标记' : '标记为商用'"
               aria-label="商用标记"
+              type="button"
             >
               <svg viewBox="0 0 24 24" width="20" height="20">
                 <path
@@ -1225,6 +1274,7 @@ onUnmounted(() => {
               :class="{ 'is-favorite': isFavorite(font.family) }"
               :title="isFavorite(font.family) ? '取消收藏' : '收藏'"
               aria-label="收藏字体"
+              type="button"
             >
               <svg viewBox="0 0 24 24" width="20" height="20">
                 <path
@@ -3332,6 +3382,90 @@ onUnmounted(() => {
   .batch-actions {
     flex-wrap: wrap;
     justify-content: flex-start;
+  }
+}
+
+/* 修改商用按钮和收藏按钮样式 */
+.action-btn {
+  background: none;
+  border: none;
+  padding: 6px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  outline: none;
+  z-index: 2;
+}
+
+.action-btn:hover {
+  background-color: var(--background-tertiary);
+  transform: translateY(-2px);
+  color: var(--text-primary);
+}
+
+.action-btn.favorite-btn:hover {
+  color: var(--warning-color);
+}
+
+.action-btn.commercial-btn:hover {
+  color: var(--success-color);
+}
+
+.action-btn.is-favorite,
+.action-btn.favorite-btn.is-favorite {
+  color: var(--warning-color);
+}
+
+.action-btn.is-commercial,
+.action-btn.commercial-btn.is-commercial {
+  color: var(--success-color);
+}
+
+.action-btn:active {
+  transform: scale(0.95);
+}
+
+/* 确保按钮在字体卡片中定位正确 */
+.font-card-actions {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 4px;
+  z-index: 10;
+}
+
+/* 按钮动画效果 */
+.action-btn svg {
+  transition: transform 0.2s ease;
+}
+
+.action-btn:hover svg {
+  transform: scale(1.2);
+}
+
+.action-btn.is-favorite svg,
+.action-btn.is-commercial svg {
+  filter: drop-shadow(0 0 2px currentColor);
+}
+
+/* 添加移动设备的触摸优化 */
+@media (hover: none) {
+  .action-btn {
+    padding: 8px;
+  }
+
+  .action-btn svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .font-card-actions {
+    gap: 8px;
   }
 }
 </style>

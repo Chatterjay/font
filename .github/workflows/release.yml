@@ -41,7 +41,11 @@ jobs:
         run: echo "version=$(node -p "require('./package.json').version")" >> $env:GITHUB_OUTPUT
         shell: pwsh
 
+      # 注意：你需要在GitHub仓库设置中添加以下密钥
+      # TAURI_PRIVATE_KEY - 从app.key文件中复制的私钥内容
+      # TAURI_KEY_PASSWORD - 创建私钥时设置的密码
       - name: Build Tauri App
+        id: tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -55,4 +59,38 @@ jobs:
             提交SHA: ${{ github.sha }}
             构建时间: ${{ github.event.repository.updated_at }}
           releaseDraft: false
-          prerelease: false 
+          prerelease: false
+          
+      # 构建更新元数据文件
+      - name: Generate update metadata
+        shell: pwsh
+        run: |
+          $version = "${{ steps.package_version.outputs.version }}"
+          $date = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
+          $notes = "自动构建更新，提交SHA: ${{ github.sha }}"
+          $platforms = @{
+            "windows-x86_64" = @{
+              signature = ""
+              url = "https://github.com/Chatterjay/font-viewer/releases/download/v$version-${{ github.run_number }}/Font.Viewer_$version`_x64-setup.exe"
+            }
+          }
+          
+          $updateData = @{
+            version = $version
+            notes = $notes
+            pub_date = $date
+            platforms = $platforms
+          } | ConvertTo-Json -Depth 5
+          
+          $updateData | Out-File -FilePath font-viewer-updater.json
+
+      # 上传更新元数据文件
+      - name: Upload update metadata
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.tauri.outputs.uploadUrl }}
+          asset_path: ./font-viewer-updater.json
+          asset_name: font-viewer-updater.json
+          asset_content_type: application/json 

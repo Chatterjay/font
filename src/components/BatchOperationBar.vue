@@ -1,41 +1,41 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed } from "vue";
 
 const props = defineProps({
   // 是否处于批量模式
   isBatchMode: {
     type: Boolean,
-    default: false
+    default: false,
   },
   // 已选择的字体数组
   selectedFonts: {
     type: Set,
-    default: () => new Set()
+    default: () => new Set(),
   },
   // 可操作的字体列表
   fontsList: {
     type: Array,
-    default: () => []
+    default: () => [],
   },
   // 操作类型：'favorites' 或 'commercial'
   type: {
     type: String,
-    default: 'favorites',
-    validator: (value) => ['favorites', 'commercial'].includes(value)
-  }
+    default: "favorites",
+    validator: (value) => ["favorites", "commercial"].includes(value),
+  },
 });
 
 const emit = defineEmits([
-  'toggle-batch-mode',
-  'select-all',
-  'invert-selection',
-  'batch-remove',
-  'update:selected-fonts'
+  "toggle-batch-mode",
+  "select-all",
+  "invert-selection",
+  "batch-remove",
+  "update:selected-fonts",
 ]);
 
 // 计算操作按钮文本
 const actionText = computed(() => {
-  return props.type === 'favorites' ? '收藏' : '商用';
+  return props.type === "favorites" ? "收藏" : "商用";
 });
 
 // 选中数量
@@ -43,22 +43,22 @@ const selectedCount = computed(() => props.selectedFonts.size);
 
 // 全选
 const selectAll = () => {
-  emit('select-all');
+  emit("select-all");
 };
 
 // 反选
 const invertSelection = () => {
-  emit('invert-selection');
+  emit("invert-selection");
 };
 
 // 批量移除
 const batchRemove = () => {
-  emit('batch-remove');
+  emit("batch-remove");
 };
 
 // 切换批量模式
 const toggleBatchMode = () => {
-  emit('toggle-batch-mode');
+  emit("toggle-batch-mode");
 };
 </script>
 
@@ -280,13 +280,13 @@ const toggleBatchMode = () => {
     flex-direction: column;
     align-items: flex-start;
   }
-  
+
   .selection-controls {
     margin-top: var(--spacing-xs);
     width: 100%;
     justify-content: space-between;
   }
-  
+
   .batch-actions {
     margin-top: var(--spacing-xs);
     flex-wrap: wrap;
@@ -294,4 +294,4 @@ const toggleBatchMode = () => {
     width: 100%;
   }
 }
-</style> 
+</style>

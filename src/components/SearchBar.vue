@@ -1,17 +1,27 @@
 <script setup>
-import { ref } from "vue";
+import { ref, watch } from "vue";
 
 const searchQuery = ref("");
 const emit = defineEmits(["search"]);
 
-const handleSearch = () => {
-  emit("search", searchQuery.value);
+// 监听输入变化并发送事件
+const handleInput = () => {
+  emit("search", searchQuery.value.trim());
 };
 
+// 清除搜索框内容
 const clearSearch = () => {
   searchQuery.value = "";
+  // 确保触发search事件，传递空字符串
   emit("search", "");
 };
+
+// 监听props中的searchQuery变化，如果外部清空了，也要同步更新本地状态
+watch(searchQuery, (newVal) => {
+  if (newVal.trim() === "") {
+    emit("search", "");
+  }
+});
 </script>
 
 <template>
@@ -24,7 +34,7 @@ const clearSearch = () => {
         type="text"
         v-model="searchQuery"
         placeholder="搜索字体..."
-        @input="handleSearch"
+        @input="handleInput"
         class="search-input"
       />
       <button 
@@ -33,6 +43,7 @@ const clearSearch = () => {
         class="clear-btn" 
         title="清除搜索"
         aria-label="清除搜索"
+        type="button"
       >
         <svg viewBox="0 0 24 24" width="16" height="16">
           <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
