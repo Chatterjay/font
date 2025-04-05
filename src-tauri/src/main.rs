@@ -101,8 +101,12 @@ async fn check_update(app_handle: &tauri::AppHandle, window: &tauri::Window) -> 
                 let current_version = app_handle.package_info().version.clone();
                 let available_version = update.latest_version();
                 
+                // 将Version类型转换为字符串
+                let current_version_str = current_version.to_string();
+                let available_version_str = available_version.clone();
+                
                 // 比较版本号，确保只有更高版本才触发更新
-                if compare_versions(&available_version, &current_version) > 0 {
+                if compare_versions(&available_version_str, &current_version_str) > 0 {
                     // 有更新可用，发送事件给前端
                     println!("发现更新: {} (当前版本: {})", available_version, current_version);
                     window
