@@ -138,8 +138,8 @@ jobs:
             
             # 创建一个临时的签名脚本
             $signingScript = @'
-          const fs = require('fs');
-          const crypto = require('crypto');
+          import fs from 'fs';
+          import crypto from 'crypto';
           
           const privateKey = fs.readFileSync('PRIVATE_KEY_PATH', 'utf8');
           const fileBuffer = fs.readFileSync('MSI_FILE_PATH');
@@ -171,7 +171,7 @@ jobs:
             Set-Content -Path $tempScriptPath -Value $signingScript
             
             # 执行签名脚本
-            $signature = node $tempScriptPath
+            $signature = node --input-type=module $tempScriptPath
             
             if ([string]::IsNullOrWhiteSpace($signature)) {
               throw "签名失败，返回为空"

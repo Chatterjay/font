@@ -15,7 +15,6 @@
     "debug-update": "node debug-update.js",
     "clean-build": "rimraf dist && npm run build",
     "sign-update": "node scripts/sign-update.js",
-    "sign-manager": "node scripts/signing-manager.js",
     "release:patch": "node scripts/release.js patch",
     "release:minor": "node scripts/release.js minor",
     "release:major": "node scripts/release.js major"
