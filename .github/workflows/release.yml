@@ -97,7 +97,7 @@ jobs:
           echo "msi_file=$msiFile" >> $env:GITHUB_OUTPUT
           echo "tag_name=$tagName" >> $env:GITHUB_OUTPUT
 
-      - name: 创建并签名更新元数据
+       - name: 创建并签名更新元数据
         id: sign
         shell: pwsh
         run: |
