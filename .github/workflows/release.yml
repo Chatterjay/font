@@ -136,34 +136,42 @@ jobs:
             $privateKeyPath = "private_key.pem"
             $env:TAURI_PRIVATE_KEY | Out-File -FilePath $privateKeyPath -Encoding utf8 -NoNewline
             
-            # 使用Node.js的crypto模块进行签名
-            $tempScript = "sign_temp.js"
-            @"
-            const fs = require('fs');
-            const crypto = require('crypto');
+            # 创建一个临时的签名脚本
+            $signingScript = @'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          
+          const privateKey = fs.readFileSync('PRIVATE_KEY_PATH', 'utf8');
+          const fileBuffer = fs.readFileSync('MSI_FILE_PATH');
+          
+          const sign = crypto.createSign('SHA256');
+          sign.update(fileBuffer);
+          sign.end();
+          
+          try {
+            const signature = sign.sign({ 
+              key: privateKey, 
+              passphrase: 'KEY_PASSWORD'
+            }, 'base64');
             
-            const privateKey = fs.readFileSync('$privateKeyPath', 'utf8');
-            const fileBuffer = fs.readFileSync('$msiFile');
+            console.log(signature);
+          } catch(err) {
+            console.error('签名错误:', err.message);
+            process.exit(1);
+          }
+          '@
             
-            const sign = crypto.createSign('SHA256');
-            sign.update(fileBuffer);
-            sign.end();
+            # 替换脚本中的占位符
+            $signingScript = $signingScript.Replace('PRIVATE_KEY_PATH', $privateKeyPath)
+            $signingScript = $signingScript.Replace('MSI_FILE_PATH', $msiFile)
+            $signingScript = $signingScript.Replace('KEY_PASSWORD', "${{ secrets.TAURI_KEY_PASSWORD }}")
             
-            try {
-              const signature = sign.sign({ 
-                key: privateKey, 
-                passphrase: '${{ secrets.TAURI_KEY_PASSWORD }}'
-              }, 'base64');
-              
-              console.log(signature);
-            } catch(err) {
-              console.error('签名错误:', err.message);
-              process.exit(1);
-            }
-            "@ | Out-File -FilePath $tempScript -Encoding utf8
+            # 将脚本写入临时文件
+            $tempScriptPath = "sign_temp.js"
+            Set-Content -Path $tempScriptPath -Value $signingScript
             
             # 执行签名脚本
-            $signature = node $tempScript
+            $signature = node $tempScriptPath
             
             if ([string]::IsNullOrWhiteSpace($signature)) {
               throw "签名失败，返回为空"
@@ -176,19 +184,17 @@ jobs:
           } finally {
             # 清理临时文件
             if (Test-Path $privateKeyPath) { Remove-Item -Path $privateKeyPath -Force -ErrorAction SilentlyContinue }
-            if (Test-Path $tempScript) { Remove-Item -Path $tempScript -Force -ErrorAction SilentlyContinue }
+            if (Test-Path $tempScriptPath) { Remove-Item -Path $tempScriptPath -Force -ErrorAction SilentlyContinue }
           }
           
           # 准备更新元数据
           $msiUrl = "https://github.com/Chatterjay/font-viewer/releases/download/$tagName/$msiFileName"
           
+          # 获取更新日志内容
+          $changelogContent = '${{ steps.changelog.outputs.changes }}'
+          
           # 创建更新日志
-          $notes = @"
-## 系统字体查看器 v$version
-
-### 更新内容:
-${{ steps.changelog.outputs.changes }}
-"@
+          $notes = "## 系统字体查看器 v$version`n`n### 更新内容:`n$changelogContent"
           
           # 创建更新元数据
           $updateData = @{
