@@ -96,7 +96,7 @@ jobs:
           releaseDraft: false
           prerelease: false
           
-      # 生成更新元数据
+      # 生成更新元数据文件
       - name: 生成更新元数据文件
         id: updater
         shell: pwsh
@@ -115,8 +115,8 @@ jobs:
           
           foreach ($path in $artifacts) {
             if ($path -match '\.msi$' -and $path -notmatch '\.zip') {
-              $msiFile = $path
-              $msiFileName = Split-Path -Path $path -Leaf
+              $msiFile = Resolve-Path -Path $path
+              $msiFileName = Split-Path -Path $msiFile -Leaf
               Write-Host "找到MSI文件: $msiFileName"
               break
             }
@@ -138,8 +138,8 @@ jobs:
             
             # 创建一个临时的签名脚本
             $signingScript = @'
-          import fs from 'fs';
-          import crypto from 'crypto';
+          const fs = require('fs');
+          const crypto = require('crypto');
           
           const privateKey = fs.readFileSync('PRIVATE_KEY_PATH', 'utf8');
           const fileBuffer = fs.readFileSync('MSI_FILE_PATH');
@@ -167,7 +167,7 @@ jobs:
             $signingScript = $signingScript.Replace('KEY_PASSWORD', "${{ secrets.TAURI_KEY_PASSWORD }}")
             
             # 将脚本写入临时文件
-            $tempScriptPath = "sign_temp.mjs"
+            $tempScriptPath = "sign_temp.js"
             Set-Content -Path $tempScriptPath -Value $signingScript
             
             # 执行签名脚本
