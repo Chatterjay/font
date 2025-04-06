@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "Font Viewer",
-    "version": "1.1.3"
+    "version": "1.1.4"
   },
   "tauri": {
     "allowlist": {
@@ -63,8 +63,8 @@
     "updater": {
       "active": true,
       "endpoints": [
-        "https://github.com/Chatterjay/font-viewer/releases/latest/download/latest-version.json",
-        "https://github.com/Chatterjay/font-viewer/releases/latest/download/font-viewer-updater.json"
+        "https://github.com/Chatterjay/font/releases/latest/download/latest-version.json",
+        "https://github.com/Chatterjay/font/releases/latest/download/font-viewer-updater.json"
       ],
       "dialog": false,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE0QkY5MEQwQjVBODc5NjcKUldSbmVhaTEwSkMvRk84VEl4azMwRytwUFpBdDl3OWQydUErQlhCYTN5QUUvVnh0dW1tSXliM2cK",

@@ -188,7 +188,7 @@ jobs:
           }
           
           # 准备更新元数据
-          $msiUrl = "https://github.com/Chatterjay/font-viewer/releases/download/$tagName/$msiFileName"
+          $msiUrl = "https://github.com/Chatterjay/font/releases/download/$tagName/$msiFileName"
           
           # 获取更新日志内容
           $changelogContent = '${{ steps.changelog.outputs.changes }}'
