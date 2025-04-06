@@ -109,9 +109,10 @@ jobs:
           $tagName = "${{ steps.metadata.outputs.tag_name }}"
           $msiFile = "${{ steps.metadata.outputs.msi_file }}"
           $msiUrl = "https://github.com/Chatterjay/font-viewer/releases/download/$tagName/$msiFile"
-          $changelog = @'
-${{ steps.changelog.outputs.changes }}
-'@
+          
+          # 将GitHub变量保存为文件然后读取，避免YAML解析问题
+          '${{ steps.changelog.outputs.changes }}' | Out-File -FilePath changelog.txt -Encoding utf8
+          $changelog = Get-Content -Path changelog.txt -Raw
           
           # 查找本地MSI文件
           $localMsiPath = "src-tauri/target/release/bundle/msi/$msiFile"
@@ -161,6 +162,7 @@ $changelog
           
           # 清理
           Remove-Item -Path tauri.key -Force
+          Remove-Item -Path changelog.txt -Force -ErrorAction SilentlyContinue
           
           Write-Host "更新元数据创建完成"
         env:
