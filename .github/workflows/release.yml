@@ -97,7 +97,7 @@ jobs:
           echo "msi_file=$msiFile" >> $env:GITHUB_OUTPUT
           echo "tag_name=$tagName" >> $env:GITHUB_OUTPUT
 
-       - name: 创建并签名更新元数据
+      - name: 创建并签名更新元数据
         id: sign
         shell: pwsh
         run: |
@@ -163,6 +163,9 @@ $changelog
           Remove-Item -Path tauri.key -Force
           
           Write-Host "更新元数据创建完成"
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
       - name: 上传更新元数据
         uses: softprops/action-gh-release@v1
