@@ -150,9 +150,9 @@ ${{ steps.recent_commits.outputs.changelog }}
           
           # 特殊处理：确保notes字段中的换行符被正确转义
           # 但仍然在JSON中保持可读性
-          $metadataJson = $metadataJson -replace '(?<=notes": ")(.+?)(?=")', { 
+          $metadataJson = $metadataJson -replace '(?<=notes": ")(.+?)(?=")', {
             param($match)
-            $match.Groups[1].Value -replace "`r`n", "\\n" -replace "`n", "\\n"
+            $match.Groups[1].Value -replace "\`r\`n", "\\n" -replace "\`n", "\\n"
           }
           
           $metadataJson | Set-Content -Path font-viewer-updater.json -Encoding UTF8
@@ -253,9 +253,9 @@ ${{ steps.recent_commits.outputs.changelog }}
             $updatedJson = ConvertTo-Json -InputObject $metadata -Depth 10
             
             # 特殊处理notes字段的换行符
-            $updatedJson = $updatedJson -replace '(?<=notes": ")(.+?)(?=")', { 
+            $updatedJson = $updatedJson -replace '(?<=notes": ")(.+?)(?=")', {
               param($match)
-              $match.Groups[1].Value -replace "`r`n", "\\n" -replace "`n", "\\n"
+              $match.Groups[1].Value -replace "\`r\`n", "\\n" -replace "\`n", "\\n"
             }
             
             $updatedJson | Set-Content -Path font-viewer-updater.json -Encoding UTF8
