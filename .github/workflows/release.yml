@@ -96,21 +96,29 @@ jobs:
           $tagName = "${{ steps.version.outputs.tag_name }}"
           
           # 查找MSI文件
-          $msiPattern = 'Font-Viewer_.+\.msi'
-          if ($artifactPaths -match $msiPattern) {
-            $msiFile = $matches[0].Split('\')[-1]
-            Write-Host "找到MSI文件: $msiFile"
-          } else {
-            $msiFile = "Font-Viewer_${version}_x64_zh-CN.msi"
-            Write-Host "使用默认MSI文件名: $msiFile"
+          $msiFile = $null
+          $artifactPathsArray = $artifactPaths | ConvertFrom-Json
+          
+          foreach ($path in $artifactPathsArray) {
+            if ($path -match '\.msi$' -and $path -notmatch '\.zip') {
+              $msiFile = Split-Path -Path $path -Leaf
+              Write-Host "找到MSI文件: $msiFile"
+              break
+            }
+          }
+          
+          if (-not $msiFile) {
+            Write-Host "错误: 未找到MSI文件"
+            exit 1
           }
           
           # 输出变量
           echo "msi_file=$msiFile" >> $env:GITHUB_OUTPUT
           
-          # 检查MSI文件路径
-          $localMsiPath = "src-tauri/target/release/bundle/msi/$msiFile"
-          if (-not (Test-Path $localMsiPath)) {
+          # 获取MSI文件的实际路径
+          $localMsiPath = $artifactPathsArray | Where-Object { $_ -match [regex]::Escape($msiFile) }
+          
+          if (-not $localMsiPath -or -not (Test-Path $localMsiPath)) {
             Write-Host "错误: 找不到MSI文件: $localMsiPath"
             exit 1
           }
