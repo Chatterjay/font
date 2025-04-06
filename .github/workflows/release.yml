@@ -3,8 +3,8 @@ name: Release
 on:
   push:
     branches:
-      - main # 在提交到main分支时触发
-      - master # 在提交到master分支时触发（适应不同的主分支命名）
+      - main
+      - master
 
 # 添加权限配置
 permissions:
@@ -47,11 +47,12 @@ jobs:
         shell: pwsh
         run: |
           $commits = git log -5 --pretty=format:"- %s (%h)" --abbrev-commit
-          $commits = $commits -join "`n"
+          $commits = $commits -join "\n"
           echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
           echo "$commits" >> $env:GITHUB_OUTPUT
           echo "EOF" >> $env:GITHUB_OUTPUT
 
+      # 构建应用程序
       - name: Build Tauri App
         id: tauri
         uses: tauri-apps/tauri-action@v0
@@ -60,8 +61,8 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: v${{ steps.package_version.outputs.version }}-${{ github.run_number }}
-          releaseName: Release v${{ steps.package_version.outputs.version }}-${{ github.run_number }}
+          tagName: v${{ steps.package_version.outputs.version }}
+          releaseName: Font Viewer v${{ steps.package_version.outputs.version }}
           releaseBody: |
             ## 系统字体查看器 v${{ steps.package_version.outputs.version }}
             
@@ -72,50 +73,89 @@ jobs:
             提交SHA: ${{ github.sha }}
           releaseDraft: false
           prerelease: false
-          
-      # 构建更新元数据文件
+
+      # 生成更新元数据
       - name: Generate update metadata
-        id: metadata
+        id: generate_metadata
         shell: pwsh
         run: |
           $version = "${{ steps.package_version.outputs.version }}"
-          $date = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
+          $releaseTag = "v$version"
           
-          # 使用收集到的提交记录作为更新说明
-          $changelog = @"
+          # 创建更新说明
+          $notes = @"
           ## 系统字体查看器 v$version
           
           ### 更新内容:
           ${{ steps.recent_commits.outputs.changelog }}
           "@
           
-          $platforms = @{
-            "windows-x86_64" = @{
-              signature = ""
-              url = "https://github.com/Chatterjay/font-viewer/releases/download/v$version-${{ github.run_number }}/Font.Viewer_$version`_x64_zh-CN.msi.zip"
+          # 获取当前时间为RFC 3339格式
+          $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+          
+          # 创建基础元数据
+          $metadata = @{
+            version = "$version"
+            notes = $notes
+            pub_date = $pubDate
+            platforms = @{
+              "windows-x86_64" = @{
+                url = "https://github.com/Chatterjay/font-viewer/releases/download/$releaseTag/Font-Viewer_${version}_x64_en-US.msi"
+                signature = ""
+              }
             }
           }
           
-          $updateData = @{
-            version = $version
-            notes = $changelog
-            pub_date = $date
-            platforms = $platforms
-          } | ConvertTo-Json -Depth 5
+          # 保存元数据到临时文件
+          $metadataJson = ConvertTo-Json -InputObject $metadata -Depth 10
+          $metadataJson | Set-Content -Path updater.json -Encoding UTF8
           
-          # 生成特定版本的元数据文件
-          $updateData | Out-File -FilePath font-viewer-updater.json
-          
-          # 同时生成一个固定名称的元数据文件，用于最新版本检查
-          $updateData | Out-File -FilePath latest-version.json
+          # 将元数据路径保存为输出变量
+          echo "metadata_path=updater.json" >> $env:GITHUB_OUTPUT
 
-      # 上传更新元数据文件 - 使用softprops/action-gh-release@v1
+      # 签名元数据文件
+      - name: Sign update metadata
+        id: sign_metadata
+        shell: pwsh
+        run: |
+          # 安装Tauri CLI
+          npm install -g @tauri-apps/cli
+          
+          # 保存私钥到临时文件
+          $env:TAURI_PRIVATE_KEY | Out-File -FilePath private.key
+          
+          # 从元数据文件中获取MSI URL
+          $metadata = Get-Content -Path updater.json | ConvertFrom-Json
+          $msiUrl = $metadata.platforms.'windows-x86_64'.url
+          
+          # 下载MSI文件
+          $msiFileName = Split-Path -Path $msiUrl -Leaf
+          Invoke-WebRequest -Uri $msiUrl -OutFile $msiFileName
+          
+          # 使用Tauri CLI签名MSI文件
+          $signature = npx --yes tauri signer sign --key private.key --password "$env:TAURI_KEY_PASSWORD" $msiFileName
+          
+          # 更新元数据中的签名
+          $metadata.platforms.'windows-x86_64'.signature = $signature
+          
+          # 保存更新后的元数据
+          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path updater.json -Encoding UTF8
+          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path latest-version.json -Encoding UTF8
+          
+          # 删除临时文件
+          Remove-Item -Path private.key -Force
+          Remove-Item -Path $msiFileName -Force
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+      # 上传签名后的元数据文件
       - name: Upload update metadata
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.package_version.outputs.version }}-${{ github.run_number }}
+          tag_name: v${{ steps.package_version.outputs.version }}
           files: |
-            font-viewer-updater.json
+            updater.json
             latest-version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
