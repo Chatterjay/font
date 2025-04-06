@@ -128,14 +128,38 @@ jobs:
           
           # 签名MSI文件
           Write-Host "正在签名MSI文件..."
-          $signature = npx tauri signer sign --key tauri.key --password "$env:TAURI_KEY_PASSWORD" "$localMsiPath"
           
-          if (-not $signature) {
-            Write-Host "错误: 签名失败"
-            exit 1
+          # 使用正确的tauri signer命令
+          $env:TAURI_KEY_PASSWORD = "$env:TAURI_KEY_PASSWORD"
+          
+          try {
+            # 使用npx确保命令正确执行
+            npm i -g @tauri-apps/cli@latest
+            
+            # 使用正确的命令格式
+            Write-Host "使用以下命令进行签名: tauri signer sign 文件"
+            $signature = tauri signer sign --password "$env:TAURI_KEY_PASSWORD" "$localMsiPath" --key tauri.key
+            
+            if (-not $signature) {
+              throw "签名返回为空"
+            }
+          } catch {
+            Write-Host "捕获到错误: $_"
+            # 尝试使用旧版格式
+            try {
+              Write-Host "尝试备用命令: tauri sign 文件"
+              $signature = tauri sign --password "$env:TAURI_KEY_PASSWORD" "$localMsiPath" --key tauri.key
+              
+              if (-not $signature) {
+                throw "备用签名命令返回为空"
+              }
+            } catch {
+              Write-Host "签名失败: $_"
+              exit 1
+            }
           }
           
-          Write-Host "签名成功"
+          Write-Host "签名成功，结果: $signature"
           
           # 准备更新元数据
           $msiUrl = "https://github.com/Chatterjay/font-viewer/releases/download/$tagName/$msiFile"
