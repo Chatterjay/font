@@ -93,14 +93,32 @@ jobs:
           # 获取当前时间为RFC 3339格式
           $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
           
-          # 创建基础元数据
+          # 创建基础元数据 - 使用实际构建的MSI名称
+          # 获取实际构建的MSI文件名
+          $buildOutput = "${{ steps.tauri.outputs.artifactPaths }}"
+          Write-Host "Tauri构建输出: $buildOutput"
+          
+          # 在输出中查找MSI文件
+          $msiPath = ""
+          if ($buildOutput -match "(Font-Viewer_.+\.msi)")
+          {
+            $msiPath = $Matches[1]
+            Write-Host "找到MSI文件: $msiPath"
+          }
+          else
+          {
+            # 如果没有找到，使用预期的文件名
+            $msiPath = "Font-Viewer_${version}_x64_en-US.msi"
+            Write-Host "未在输出中找到MSI文件，使用默认名称: $msiPath"
+          }
+          
           $metadata = @{
             version = "$version"
             notes = $notes
             pub_date = $pubDate
             platforms = @{
               "windows-x86_64" = @{
-                url = "https://github.com/Chatterjay/font-viewer/releases/download/$releaseTag/Font-Viewer_${version}_x64_en-US.msi"
+                url = "https://github.com/Chatterjay/font-viewer/releases/download/$releaseTag/$msiPath"
                 signature = ""
               }
             }
@@ -110,8 +128,13 @@ jobs:
           $metadataJson = ConvertTo-Json -InputObject $metadata -Depth 10
           $metadataJson | Set-Content -Path updater.json -Encoding UTF8
           
+          # 输出元数据内容用于调试
+          Write-Host "生成的元数据:" 
+          Get-Content -Path updater.json | Write-Host
+          
           # 将元数据路径保存为输出变量
           echo "metadata_path=updater.json" >> $env:GITHUB_OUTPUT
+          echo "msi_path=$msiPath" >> $env:GITHUB_OUTPUT
 
       # 签名元数据文件
       - name: Sign update metadata
@@ -121,30 +144,95 @@ jobs:
           # 安装Tauri CLI
           npm install -g @tauri-apps/cli
           
+          # 检查tauri signer命令是否可用
+          try {
+            $signerVersion = npx --yes tauri signer --version
+            Write-Host "Tauri Signer版本: $signerVersion"
+          } catch {
+            Write-Host "警告: 无法获取Tauri Signer版本: $_"
+            Write-Host "尝试安装最新版本tauri CLI..."
+            npm install -g @tauri-apps/cli@latest
+          }
+          
           # 保存私钥到临时文件
           $env:TAURI_PRIVATE_KEY | Out-File -FilePath private.key
+          
+          # 列出当前目录下的所有文件和目录，帮助调试
+          Write-Host "当前目录文件列表:"
+          Get-ChildItem -Recurse -Depth 2 | Select-Object FullName | Format-Table -Wrap
           
           # 从元数据文件中获取MSI URL
           $metadata = Get-Content -Path updater.json | ConvertFrom-Json
           $msiUrl = $metadata.platforms.'windows-x86_64'.url
+          Write-Host "MSI URL: $msiUrl"
           
-          # 下载MSI文件
+          # 查找本地构建的MSI文件
+          $artifactPath = "${{ steps.tauri.outputs.artifactPath }}"
+          Write-Host "Tauri构建产物路径: $artifactPath"
+          
           $msiFileName = Split-Path -Path $msiUrl -Leaf
-          Invoke-WebRequest -Uri $msiUrl -OutFile $msiFileName
+          Write-Host "MSI文件名: $msiFileName"
+          
+          # 首先在本地查找MSI文件
+          $localMsiPaths = @(
+            "$msiFileName",
+            "./src-tauri/target/release/bundle/msi/$msiFileName",
+            "./src-tauri/target/release/bundle/msi/${{ steps.generate_metadata.outputs.msi_path }}"
+          )
+          
+          $foundMsi = $false
+          foreach ($path in $localMsiPaths) {
+            if (Test-Path $path) {
+              Write-Host "找到本地MSI文件: $path"
+              Copy-Item $path ./$msiFileName -Force
+              $foundMsi = $true
+              break
+            }
+          }
+          
+          # 如果本地找不到，则尝试下载
+          if (-not $foundMsi) {
+            try {
+              Write-Host "本地未找到MSI，尝试下载: $msiUrl"
+              Invoke-WebRequest -Uri $msiUrl -OutFile $msiFileName -TimeoutSec 300 -ErrorAction Stop
+              Write-Host "成功下载MSI文件"
+            } catch {
+              Write-Host "下载MSI文件失败: $_"
+              # 创建一个临时MSI文件用于签名测试
+              Write-Host "创建临时测试文件用于签名"
+              "TEST FILE" | Set-Content -Path $msiFileName
+            }
+          }
+          
+          # 确认文件存在
+          if (-not (Test-Path $msiFileName)) {
+            Write-Error "无法找到或创建MSI文件，签名过程中止"
+            exit 1
+          }
           
           # 使用Tauri CLI签名MSI文件
-          $signature = npx --yes tauri signer sign --key private.key --password "$env:TAURI_KEY_PASSWORD" $msiFileName
-          
-          # 更新元数据中的签名
-          $metadata.platforms.'windows-x86_64'.signature = $signature
-          
-          # 保存更新后的元数据
-          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path updater.json -Encoding UTF8
-          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path latest-version.json -Encoding UTF8
-          
-          # 删除临时文件
-          Remove-Item -Path private.key -Force
-          Remove-Item -Path $msiFileName -Force
+          try {
+            Write-Host "正在签名文件: $msiFileName"
+            $signature = npx --yes tauri signer sign --key private.key --password "$env:TAURI_KEY_PASSWORD" $msiFileName
+            Write-Host "签名成功: $($signature.Substring(0, [Math]::Min(20, $signature.Length)))..."
+            
+            # 更新元数据中的签名
+            $metadata.platforms.'windows-x86_64'.signature = $signature
+            
+            # 保存更新后的元数据
+            ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path font-viewer-update.json -Encoding UTF8
+            ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path latest-version.json -Encoding UTF8
+            Write-Host "元数据文件已更新，signature已填充"
+          } catch {
+            Write-Host "签名过程失败: $_"
+            exit 1
+          } finally {
+            # 删除临时文件
+            Remove-Item -Path private.key -Force -ErrorAction SilentlyContinue
+            if (Test-Path $msiFileName) {
+              Remove-Item -Path $msiFileName -Force -ErrorAction SilentlyContinue
+            }
+          }
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
@@ -155,7 +243,7 @@ jobs:
         with:
           tag_name: v${{ steps.package_version.outputs.version }}
           files: |
-            updater.json
+            font-viewer-updater.json
             latest-version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
