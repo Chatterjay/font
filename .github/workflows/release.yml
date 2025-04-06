@@ -3,8 +3,8 @@ name: Release
 on:
   push:
     branches:
-      - main
-      - master
+      - main # 在提交到main分支时触发
+      - master # 在提交到master分支时触发（适应不同的主分支命名）
 
 # 添加权限配置
 permissions:
@@ -92,7 +92,7 @@ jobs:
           $platforms = @{
             "windows-x86_64" = @{
               signature = ""
-              url = "https://github.com/Chatterjay/font-viewer/releases/download/v$version-${{ github.run_number }}/Font.Viewer_$version_x64_zh-CN.msi.zip"
+              url = "https://github.com/Chatterjay/font-viewer/releases/download/v$version-${{ github.run_number }}/Font.Viewer_$version`_x64_zh-CN.msi.zip"
             }
           }
           
@@ -109,42 +109,6 @@ jobs:
           # 同时生成一个固定名称的元数据文件，用于最新版本检查
           $updateData | Out-File -FilePath latest-version.json
 
-      # 签名元数据文件
-      - name: Sign update metadata
-        id: sign_metadata
-        shell: pwsh
-        run: |
-          # 安装Tauri CLI
-          npm install -g @tauri-apps/cli
-          
-          # 保存私钥到临时文件
-          $env:TAURI_PRIVATE_KEY | Out-File -FilePath private.key
-          
-          # 从元数据文件中获取MSI URL
-          $metadata = Get-Content -Path font-viewer-updater.json | ConvertFrom-Json
-          $msiUrl = $metadata.platforms.'windows-x86_64'.url
-          
-          # 下载MSI文件
-          $msiFileName = Split-Path -Path $msiUrl -Leaf
-          Invoke-WebRequest -Uri $msiUrl -OutFile $msiFileName
-          
-          # 使用Tauri CLI签名MSI文件
-          $signature = npx --yes tauri signer sign --private-key-path private.key --password "$env:TAURI_KEY_PASSWORD" $msiFileName
-          
-          # 更新元数据中的签名
-          $metadata.platforms.'windows-x86_64'.signature = $signature
-          
-          # 保存更新后的元数据
-          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path font-viewer-updater.json -Encoding UTF8
-          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path latest-version.json -Encoding UTF8
-          
-          # 删除临时文件
-          Remove-Item -Path private.key -Force
-          Remove-Item -Path $msiFileName -Force
-        env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-
       # 上传更新元数据文件 - 使用softprops/action-gh-release@v1
       - name: Upload update metadata
         uses: softprops/action-gh-release@v1
@@ -154,4 +118,4 @@ jobs:
             font-viewer-updater.json
             latest-version.json
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  
