@@ -1,7 +1,8 @@
 /**
  * 更新包签名脚本
  * 
- * 该脚本用于手动签名updater.json文件，解决signature为空的问题
+ * 该脚本用于签名updater.json文件，以实现安全的自动更新机制
+ * 也可以在本地手动运行，为已发布的版本添加签名
  * 
  * 用法:
  * node scripts/sign-update.js <updater文件路径> <私钥路径> <私钥密码>
@@ -17,10 +18,12 @@ import { fileURLToPath } from 'url';
 import https from 'https';
 import http from 'http';
 import { createWriteStream } from 'fs';
+import crypto from 'crypto';
 
 // 获取当前文件的目录路径
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const rootDir = path.resolve(__dirname, '..');
 
 // 解析命令行参数
 const updaterFilePath = process.argv[2];
@@ -44,7 +47,7 @@ if (!fs.existsSync(keyPath)) {
 }
 
 // 创建临时目录
-const tempDir = path.join(__dirname, '..', 'temp');
+const tempDir = path.join(rootDir, 'temp');
 if (!fs.existsSync(tempDir)) {
     fs.mkdirSync(tempDir, { recursive: true });
 }
@@ -87,21 +90,88 @@ async function downloadFile(url) {
 }
 
 /**
- * 签名文件
+ * 使用Node.js crypto签名文件
+ * @param {string} filePath 要签名的文件路径
+ * @param {string} privateKeyPath 私钥路径
+ * @param {string} password 私钥密码
+ * @returns {Promise<string>} 签名结果(base64格式)
+ */
+async function signFileWithCrypto(filePath, privateKeyPath, password) {
+    try {
+        console.log(`使用Node.js crypto签名文件: ${filePath}`);
+
+        // 读取私钥和文件内容
+        const privateKey = fs.readFileSync(privateKeyPath, 'utf8');
+        const fileBuffer = fs.readFileSync(filePath);
+
+        // 创建签名
+        const sign = crypto.createSign('SHA256');
+        sign.update(fileBuffer);
+        sign.end();
+
+        // 使用私钥和密码签名
+        const signature = sign.sign({
+            key: privateKey,
+            passphrase: password || ''
+        }, 'base64');
+
+        console.log(`签名成功: ${signature.substring(0, 30)}...`);
+        return signature;
+    } catch (error) {
+        console.error(`签名失败: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * 使用Tauri CLI签名文件
+ * @param {string} filePath 要签名的文件路径
+ * @param {string} privateKeyPath 私钥路径
+ * @param {string} password 私钥密码
+ * @returns {Promise<string>} 签名结果
+ */
+async function signFileWithTauri(filePath, privateKeyPath, password) {
+    try {
+        console.log(`使用Tauri CLI签名文件: ${filePath}`);
+        const passwordParam = password ? `--password "${password}"` : '';
+
+        // 尝试新版Tauri CLI格式
+        try {
+            const command = `npx --yes @tauri-apps/cli signer sign --key "${privateKeyPath}" ${passwordParam} "${filePath}"`;
+            const signature = execSync(command).toString().trim();
+            console.log(`签名成功: ${signature.substring(0, 30)}...`);
+            return signature;
+        } catch (error) {
+            console.log(`新版格式失败，尝试旧版格式...`);
+            // 尝试旧版格式
+            const command = `npx --yes tauri signer sign --key "${privateKeyPath}" ${passwordParam} "${filePath}"`;
+            const signature = execSync(command).toString().trim();
+            console.log(`签名成功: ${signature.substring(0, 30)}...`);
+            return signature;
+        }
+    } catch (error) {
+        console.error(`使用Tauri CLI签名失败: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * 签名文件（尝试多种方法）
  * @param {string} filePath 要签名的文件路径
  * @returns {Promise<string>} 签名结果
  */
 async function signFile(filePath) {
     try {
-        console.log(`签名文件: ${filePath}`);
-        const passwordParam = keyPassword ? `-p "${keyPassword}"` : '';
-        const command = `npx tauri signer sign -f "${keyPath}" ${passwordParam} "${filePath}"`;
-
-        const signature = execSync(command).toString().trim();
-        console.log(`签名成功: ${signature.substring(0, 30)}...`);
-        return signature;
+        // 先尝试使用Node.js crypto签名
+        try {
+            return await signFileWithCrypto(filePath, keyPath, keyPassword);
+        } catch (error) {
+            console.log(`使用Node.js crypto签名失败，尝试Tauri CLI...`);
+            // 如果Node.js crypto签名失败，尝试使用Tauri CLI
+            return await signFileWithTauri(filePath, keyPath, keyPassword);
+        }
     } catch (error) {
-        console.error(`签名失败: ${error.message}`);
+        console.error(`所有签名方法都失败: ${error.message}`);
         throw error;
     }
 }
@@ -140,11 +210,33 @@ async function main() {
             console.log(`  URL: ${platformData.url}`);
 
             try {
-                // 1. 下载文件
-                const downloadedFilePath = await downloadFile(platformData.url);
+                // 1. 本地文件优先
+                let filePath = null;
+                const urlFileName = path.basename(platformData.url);
+
+                // 检查本地是否存在此文件
+                const possiblePaths = [
+                    path.join(rootDir, 'src-tauri', 'target', 'release', 'bundle', 'msi', urlFileName),
+                    path.join(rootDir, 'src-tauri', 'target', 'release', 'bundle', 'nsis', urlFileName),
+                    path.join(rootDir, urlFileName)
+                ];
+
+                for (const p of possiblePaths) {
+                    if (fs.existsSync(p)) {
+                        filePath = p;
+                        console.log(`  找到本地文件: ${filePath}`);
+                        break;
+                    }
+                }
+
+                // 如果本地没有，则下载
+                if (!filePath) {
+                    console.log(`  本地未找到文件，尝试下载...`);
+                    filePath = await downloadFile(platformData.url);
+                }
 
                 // 2. 签名文件
-                const signature = await signFile(downloadedFilePath);
+                const signature = await signFile(filePath);
 
                 // 3. 更新signature字段
                 platformData.signature = signature;
@@ -157,6 +249,13 @@ async function main() {
         // 保存更新后的文件
         fs.writeFileSync(updaterFilePath, JSON.stringify(updaterData, null, 2));
         console.log(`更新文件已保存: ${updaterFilePath}`);
+
+        // 如果是latest-version.json，也更新它
+        const latestVersionPath = path.join(path.dirname(updaterFilePath), 'latest-version.json');
+        if (updaterFilePath !== latestVersionPath && fs.existsSync(latestVersionPath)) {
+            fs.writeFileSync(latestVersionPath, JSON.stringify(updaterData, null, 2));
+            console.log(`最新版本文件已更新: ${latestVersionPath}`);
+        }
 
         console.log('处理完成!');
     } catch (error) {
