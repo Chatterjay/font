@@ -98,18 +98,34 @@ jobs:
           $buildOutput = "${{ steps.tauri.outputs.artifactPaths }}"
           Write-Host "Tauri构建输出: $buildOutput"
           
-          # 在输出中查找MSI文件
+          # 安全解析输出
           $msiPath = ""
-          if ($buildOutput -match "(Font-Viewer_.+\.msi)")
-          {
-            $msiPath = $Matches[1]
-            Write-Host "找到MSI文件: $msiPath"
+          try {
+            # 尝试将JSON字符串转换为PowerShell对象
+            if ($buildOutput -match "^\[.*\]$") {
+              $artifactPaths = $buildOutput | ConvertFrom-Json -ErrorAction Stop
+              foreach ($path in $artifactPaths) {
+                if ($path -match "\.msi$") {
+                  $msiPath = Split-Path -Path $path -Leaf
+                  Write-Host "从JSON中找到MSI文件: $msiPath"
+                  break
+                }
+              }
+            } else {
+              # 使用简单的正则表达式匹配
+              if ($buildOutput -match "Font-Viewer_[^\\]+\.msi") {
+                $msiPath = $Matches[0]
+                Write-Host "通过正则表达式找到MSI文件: $msiPath"
+              }
+            }
+          } catch {
+            Write-Host "解析构建输出时出错: $_"
           }
-          else
-          {
-            # 如果没有找到，使用预期的文件名
+          
+          # 如果没有找到，使用预期的文件名
+          if (-not $msiPath) {
             $msiPath = "Font-Viewer_${version}_x64_en-US.msi"
-            Write-Host "未在输出中找到MSI文件，使用默认名称: $msiPath"
+            Write-Host "未能从输出中提取MSI文件名，使用默认名称: $msiPath"
           }
           
           $metadata = @{
@@ -126,14 +142,14 @@ jobs:
           
           # 保存元数据到临时文件
           $metadataJson = ConvertTo-Json -InputObject $metadata -Depth 10
-          $metadataJson | Set-Content -Path updater.json -Encoding UTF8
+          $metadataJson | Set-Content -Path font-viewer-updater.json -Encoding UTF8
           
           # 输出元数据内容用于调试
           Write-Host "生成的元数据:" 
-          Get-Content -Path updater.json | Write-Host
+          Get-Content -Path font-viewer-updater.json | Write-Host
           
           # 将元数据路径保存为输出变量
-          echo "metadata_path=updater.json" >> $env:GITHUB_OUTPUT
+          echo "metadata_path=font-viewer-updater.json" >> $env:GITHUB_OUTPUT
           echo "msi_path=$msiPath" >> $env:GITHUB_OUTPUT
 
       # 签名元数据文件
@@ -162,7 +178,7 @@ jobs:
           Get-ChildItem -Recurse -Depth 2 | Select-Object FullName | Format-Table -Wrap
           
           # 从元数据文件中获取MSI URL
-          $metadata = Get-Content -Path updater.json | ConvertFrom-Json
+          $metadata = Get-Content -Path font-viewer-updater.json | ConvertFrom-Json
           $msiUrl = $metadata.platforms.'windows-x86_64'.url
           Write-Host "MSI URL: $msiUrl"
           
@@ -220,7 +236,7 @@ jobs:
             $metadata.platforms.'windows-x86_64'.signature = $signature
             
             # 保存更新后的元数据
-            ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path font-viewer-update.json -Encoding UTF8
+            ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path font-viewer-updater.json -Encoding UTF8
             ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path latest-version.json -Encoding UTF8
             Write-Host "元数据文件已更新，signature已填充"
           } catch {
