@@ -75,25 +75,20 @@ jobs:
           prerelease: false
 
       # 生成更新元数据
-            - name: Generate update metadata
+      - name: Generate update metadata
         id: generate_metadata
         shell: pwsh
-        env:
-          # 将提交日志通过环境变量传递
-          CHANGELOG: "${{ steps.recent_commits.outputs.changelog }}"
         run: |
           $version = "${{ steps.package_version.outputs.version }}"
           $releaseTag = "v$version"
           
-          # 使用环境变量中的更新日志
+          # 创建更新说明
           $notes = @"
           ## 系统字体查看器 v$version
           
           ### 更新内容:
-          $env:CHANGELOG
+          ${{ steps.recent_commits.outputs.changelog }}
           "@
-          
-          # 其余部分保持不变...
           
           # 获取当前时间为RFC 3339格式
           $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
@@ -138,39 +133,31 @@ jobs:
           Invoke-WebRequest -Uri $msiUrl -OutFile $msiFileName
           
           # 使用Tauri CLI签名MSI文件
-         - name: Sign update metadata
-          id: sign_metadata
-          shell: pwsh
-          run: |
-            # 安装Tauri CLI
-            npm install -g @tauri-apps/cli
-            
-            # 保存私钥（确保换行符正确）
-            $env:TAURI_PRIVATE_KEY.Replace(' ', "`n") | Out-File -FilePath private.key -Encoding UTF8
-            
-            # 从元数据获取MSI URL
-            $metadata = Get-Content -Path updater.json | ConvertFrom-Json
-            $msiUrl = $metadata.platforms.'windows-x86_64'.url
-            
-            # 下载MSI文件
-            $msiFileName = [System.IO.Path]::GetFileName($msiUrl)
-            Invoke-WebRequest -Uri $msiUrl -OutFile $msiFileName -ErrorAction Stop
-            
-            # 签名并捕获输出
-            $signResult = npx --yes tauri signer sign --key private.key `
-                        --password "$env:TAURI_KEY_PASSWORD" `
-                        $msiFileName 2>&1 | Out-String
-            
-            # 提取签名（假设最后一行是签名）
-            $signature = ($signResult -split "`n")[-1].Trim()
-            
-            # 更新元数据
-            $metadata.platforms.'windows-x86_64'.signature = $signature
-            
-            # 保存文件时使用紧凑格式
-            ConvertTo-Json -InputObject $metadata -Depth 10 -Compress | Set-Content -Path updater.json -Encoding UTF8
-            ConvertTo-Json -InputObject $metadata -Depth 10 -Compress | Set-Content -Path latest-version.json -Encoding UTF8
-            
-            # 调试输出
-            Write-Output "Generated signature: $signature"
-            Get-Content -Path latest-version.json | Write-Output
+          $signature = npx --yes tauri signer sign --key private.key `
+                      --password "$env:TAURI_KEY_PASSWORD" `
+                      $msiFileName
+          
+          # 更新元数据中的签名
+          $metadata.platforms.'windows-x86_64'.signature = $signature
+          
+          # 保存更新后的元数据
+          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path updater.json -Encoding UTF8
+          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path latest-version.json -Encoding UTF8
+          
+          # 删除临时文件
+          Remove-Item -Path private.key -Force
+          Remove-Item -Path $msiFileName -Force
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+      # 上传签名后的元数据文件
+      - name: Upload update metadata
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.package_version.outputs.version }}
+          files: |
+            updater.json
+            latest-version.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
