@@ -109,6 +109,9 @@ jobs:
           $tagName = "${{ steps.metadata.outputs.tag_name }}"
           $msiFile = "${{ steps.metadata.outputs.msi_file }}"
           $msiUrl = "https://github.com/Chatterjay/font-viewer/releases/download/$tagName/$msiFile"
+          $changelog = @'
+${{ steps.changelog.outputs.changes }}
+'@
           
           # 查找本地MSI文件
           $localMsiPath = "src-tauri/target/release/bundle/msi/$msiFile"
@@ -136,7 +139,7 @@ jobs:
 ## 系统字体查看器 v$version
 
 ### 更新内容:
-${{ steps.changelog.outputs.changes }}
+$changelog
 "@
           
           $metadata = @{
