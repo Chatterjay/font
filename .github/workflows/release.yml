@@ -5,8 +5,6 @@ on:
     branches:
       - main
       - master
-      - main
-      - master
 
 # 添加权限配置
 permissions:
@@ -40,8 +38,8 @@ jobs:
         
       - name: Get package version
         id: package_version
-        run: echo "version=$(node -p "require('./package.json').version")" >> $env:GITHUB_OUTPUT
         shell: pwsh
+        run: echo "version=$(node -p "require('./package.json').version")" >> $env:GITHUB_OUTPUT
         
       # 提取最近的提交信息，用作更新说明
       - name: Get recent commits for changelog
@@ -55,7 +53,6 @@ jobs:
           echo "EOF" >> $env:GITHUB_OUTPUT
 
       # 构建应用程序
-      # 构建应用程序
       - name: Build Tauri App
         id: tauri
         uses: tauri-apps/tauri-action@v0
@@ -64,8 +61,6 @@ jobs:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: v${{ steps.package_version.outputs.version }}
-          releaseName: Font Viewer v${{ steps.package_version.outputs.version }}
           tagName: v${{ steps.package_version.outputs.version }}
           releaseName: Font Viewer v${{ steps.package_version.outputs.version }}
           releaseBody: |
@@ -80,19 +75,13 @@ jobs:
           prerelease: false
 
       # 生成更新元数据
-
-      # 生成更新元数据
       - name: Generate update metadata
-        id: generate_metadata
         id: generate_metadata
         shell: pwsh
         run: |
           $version = "${{ steps.package_version.outputs.version }}"
           $releaseTag = "v$version"
-          $releaseTag = "v$version"
           
-          # 创建更新说明
-          $notes = @"
           # 创建更新说明
           $notes = @"
           ## 系统字体查看器 v$version
@@ -165,9 +154,7 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.package_version.outputs.version }}
-          tag_name: v${{ steps.package_version.outputs.version }}
           files: |
-            updater.json
             updater.json
             latest-version.json
         env:
