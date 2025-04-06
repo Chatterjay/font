@@ -1,103 +1,102 @@
-name: 自动构建发布
+name: Release
 
 on:
   push:
     branches:
-      - main
-      - master
+      - main # 在提交到main分支时触发
+      - master # 在提交到master分支时触发（适应不同的主分支命名）
 
-# 设置必要权限
+# 添加权限配置
 permissions:
   contents: write
   
 jobs:
-  build-and-release:
-    name: 构建与发布
+  release:
     runs-on: windows-latest
-    
-    env:
-      PRODUCT_NAME: 系统字体查看器
-      
     steps:
-      - name: 检出代码
+      - name: Checkout repository
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          
-      - name: 设置 Node.js 环境
+
+      - name: Install Node.js
         uses: actions/setup-node@v3
         with:
           node-version: '18'
           cache: 'npm'
-          
-      - name: 设置 Rust 环境
+
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-          
-      - name: 添加 Windows 目标
+
+      - name: Install dependencies (Rust)
         run: rustup target add x86_64-pc-windows-msvc
         
-      - name: 安装依赖
+      - name: Install dependencies (Node)
         run: npm ci
         
-      - name: 提取版本信息
-        id: version
+      - name: Get package version
+        id: package_version
         shell: pwsh
-        run: |
-          $version = node -p "require('./package.json').version"
-          echo "version=$version" >> $env:GITHUB_OUTPUT
-          echo "tag_name=v$version" >> $env:GITHUB_OUTPUT
-          echo "release_name=$env:PRODUCT_NAME v$version" >> $env:GITHUB_OUTPUT
-          
-      - name: 生成更新日志
-        id: changelog
+        run: echo "version=$(node -p "require('./package.json').version")" >> $env:GITHUB_OUTPUT
+        
+      # 提取最近的提交信息，用作更新说明
+      - name: Get recent commits for changelog
+        id: recent_commits
         shell: pwsh
         run: |
           $commits = git log -5 --pretty=format:"- %s (%h)" --abbrev-commit
           $commits = $commits -join "`n"
-          echo "changes<<EOF" >> $env:GITHUB_OUTPUT
+          echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
           echo "$commits" >> $env:GITHUB_OUTPUT
           echo "EOF" >> $env:GITHUB_OUTPUT
-          
-      - name: 构建 Tauri 应用
-        id: tauri_build
+
+      - name: Build Tauri App
+        id: tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: ${{ steps.version.outputs.tag_name }}
-          releaseName: ${{ steps.version.outputs.release_name }}
+          tagName: v${{ steps.package_version.outputs.version }}-${{ github.run_number }}
+          releaseName: Release v${{ steps.package_version.outputs.version }}-${{ github.run_number }}
           releaseBody: |
-            ## ${{ steps.version.outputs.release_name }}
+            ## 系统字体查看器 v${{ steps.package_version.outputs.version }}
             
             ### 更新内容:
-            ${{ steps.changelog.outputs.changes }}
+            ${{ steps.recent_commits.outputs.changelog }}
             
             构建时间: ${{ github.event.repository.updated_at }}
-            提交: ${{ github.sha }}
+            提交SHA: ${{ github.sha }}
           releaseDraft: false
           prerelease: false
           
-      - name: 准备更新服务文件
-        id: prepare_update
+      # 构建更新元数据文件
+      - name: Generate update metadata
+        id: metadata
         shell: pwsh
         run: |
-          # 安装必要工具
-          npm install -g @tauri-apps/cli@latest
+          $version = "${{ steps.package_version.outputs.version }}"
+          $date = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
           
-          # 提取MSI文件信息
-          $artifactPaths = '${{ steps.tauri_build.outputs.artifactPaths }}'
+          # 使用收集到的提交记录作为更新说明
+          $changelog = @"
+          ## 系统字体查看器 v$version
+          
+          ### 更新内容:
+          ${{ steps.recent_commits.outputs.changelog }}
+          "@
+          
+          $tagName = "v$version-${{ github.run_number }}"
+          
+          # 找出构建产物中的MSI文件
+          $artifactPaths = '${{ steps.tauri.outputs.artifactPaths }}'
           Write-Host "构建产物: $artifactPaths"
           
-          $version = "${{ steps.version.outputs.version }}"
-          $tagName = "${{ steps.version.outputs.tag_name }}"
-          
-          # 查找MSI文件
-          $msiFile = $null
           $artifactPathsArray = $artifactPaths | ConvertFrom-Json
+          $msiFile = $null
           
           foreach ($path in $artifactPathsArray) {
             if ($path -match '\.msi$' -and $path -notmatch '\.zip') {
@@ -108,111 +107,89 @@ jobs:
           }
           
           if (-not $msiFile) {
-            Write-Host "错误: 未找到MSI文件"
-            exit 1
+            Write-Host "警告: 未找到MSI文件，使用默认名称"
+            $msiFile = "Font.Viewer_${version}_x64_zh-CN.msi"
           }
           
-          # 输出变量
-          echo "msi_file=$msiFile" >> $env:GITHUB_OUTPUT
-          
-          # 获取MSI文件的实际路径
-          $localMsiPath = $artifactPathsArray | Where-Object { $_ -match [regex]::Escape($msiFile) }
-          
-          if (-not $localMsiPath -or -not (Test-Path $localMsiPath)) {
-            Write-Host "错误: 找不到MSI文件: $localMsiPath"
-            exit 1
-          }
-          
-          # 签名MSI文件
-          Write-Host "正在签名MSI文件..."
-          
-          try {
-            # 将私钥保存到文件
-            $privateKeyPath = "private_key.pem"
-            $env:TAURI_PRIVATE_KEY | Out-File -FilePath $privateKeyPath -Encoding utf8 -NoNewline
-            
-            # 直接使用tauri命令行工具进行签名
-            Write-Host "开始尝试签名..."
-            $signature = node -e "
-              const fs = require('fs');
-              const crypto = require('crypto');
-              const privateKey = fs.readFileSync('$privateKeyPath', 'utf8');
-              const fileBuffer = fs.readFileSync('$localMsiPath');
-              const sign = crypto.createSign('SHA256');
-              sign.update(fileBuffer);
-              sign.end();
-              const signature = sign.sign({
-                key: privateKey,
-                passphrase: '$env:TAURI_KEY_PASSWORD'
-              }, 'base64');
-              console.log(signature);
-            "
-            
-            # 验证签名结果
-            if ([string]::IsNullOrWhiteSpace($signature)) {
-              throw "签名生成失败，结果为空"
-            }
-            
-            Write-Host "签名成功，生成了签名字符串"
-          } catch {
-            Write-Host "签名过程出错: $_"
-            
-            # 如果签名失败，尝试跳过
-            Write-Host "无法生成签名，将继续但不使用签名"
-            # 使用空签名
-            $signature = ""
-          } finally {
-            # 清理临时文件
-            if (Test-Path $privateKeyPath) {
-              Remove-Item -Path $privateKeyPath -Force
+          $platforms = @{
+            "windows-x86_64" = @{
+              signature = ""
+              url = "https://github.com/Chatterjay/font-viewer/releases/download/$tagName/$msiFile"
             }
           }
           
-          # 准备更新元数据
-          $msiUrl = "https://github.com/Chatterjay/font-viewer/releases/download/$tagName/$msiFile"
-          
-          # 保存更新日志到临时文件，避免YAML解析问题
-          '${{ steps.changelog.outputs.changes }}' | Out-File -FilePath changelog.txt -Encoding utf8
-          $changelog = Get-Content -Path changelog.txt -Raw
-          
-          # 创建更新元数据
           $updateData = @{
             version = $version
-            notes = "## ${{ steps.version.outputs.release_name }}`n`n### 更新内容:`n$changelog"
-            pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-            platforms = @{
-              "windows-x86_64" = @{
-                url = $msiUrl
+            notes = $changelog
+            pub_date = $date
+            platforms = $platforms
+          }
+          
+          # 保存元数据为临时文件
+          $updateJson = ConvertTo-Json -InputObject $updateData -Depth 5
+          $updateJson | Out-File -FilePath updater.json -Encoding UTF8
+          
+      # 签名元数据文件
+      - name: Sign update metadata
+        id: sign_metadata
+        shell: pwsh
+        run: |
+          # 安装Tauri CLI
+          npm install -g @tauri-apps/cli
+          
+          # 保存私钥到临时文件
+          $env:TAURI_PRIVATE_KEY | Out-File -FilePath private.key
+          
+          # 从元数据文件中获取MSI URL
+          $metadata = Get-Content -Path updater.json | ConvertFrom-Json
+          $msiUrl = $metadata.platforms.'windows-x86_64'.url
+          
+          # 下载MSI文件
+          $msiFileName = Split-Path -Path $msiUrl -Leaf
+          
+          # 找出MSI文件的实际路径
+          $artifactPaths = '${{ steps.tauri.outputs.artifactPaths }}' | ConvertFrom-Json
+          $msiPath = $artifactPaths | Where-Object { $_ -match [regex]::Escape($msiFileName) }
+          
+          if (-not $msiPath -or -not (Test-Path $msiPath)) {
+            Write-Host "错误: 找不到MSI文件路径，无法签名"
+            $signature = ""
+          } else {
+            try {
+              # 使用Tauri CLI签名MSI文件
+              Write-Host "尝试签名文件: $msiPath"
+              $signature = npx --yes tauri signer sign --key private.key --password "$env:TAURI_KEY_PASSWORD" "$msiPath"
+              
+              if ([string]::IsNullOrWhiteSpace($signature)) {
+                throw "签名结果为空"
               }
+              
+              Write-Host "签名成功"
+            } catch {
+              Write-Host "签名失败: $_"
+              $signature = ""
             }
           }
           
-          # 如果有签名，添加到元数据中
-          if (-not [string]::IsNullOrWhiteSpace($signature)) {
-            Write-Host "添加签名到更新元数据中"
-            $updateData.platforms."windows-x86_64".signature = $signature
-          } else {
-            Write-Host "无签名，跳过签名字段"
-          }
+          # 更新元数据中的签名
+          $metadata.platforms.'windows-x86_64'.signature = $signature
           
-          # 保存元数据文件
-          $updateJson = ConvertTo-Json -InputObject $updateData -Depth 10
-          $updateJson | Out-File -FilePath font-viewer-updater.json -Encoding utf8
-          $updateJson | Out-File -FilePath latest-version.json -Encoding utf8
+          # 保存更新后的元数据
+          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path font-viewer-updater.json -Encoding UTF8
+          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path latest-version.json -Encoding UTF8
           
-          # 清理临时文件
-          Remove-Item -Path tauri.key -Force
-          Remove-Item -Path changelog.txt -Force -ErrorAction SilentlyContinue
-          
-          Write-Host "更新元数据已创建"
+          # 删除临时文件
+          Remove-Item -Path private.key -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path updater.json -Force -ErrorAction SilentlyContinue
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          
-      - name: 上传更新元数据
+
+      # 上传更新元数据文件
+      - name: Upload update metadata
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.version.outputs.tag_name }}
+          tag_name: v${{ steps.package_version.outputs.version }}-${{ github.run_number }}
           files: |
             font-viewer-updater.json
             latest-version.json
