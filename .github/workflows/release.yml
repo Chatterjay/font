@@ -1,4 +1,4 @@
-name: Release
+name: 自动构建发布
 
 on:
   push:
@@ -6,41 +6,50 @@ on:
       - main
       - master
 
-# 添加权限配置
+# 设置必要权限
 permissions:
   contents: write
   
 jobs:
-  release:
+  build-and-release:
+    name: 构建与发布
     runs-on: windows-latest
+    
+    env:
+      PRODUCT_NAME: 系统字体查看器
+      
     steps:
       - name: 检出代码
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-
-      - name: 安装 Node.js
+          
+      - name: 设置 Node.js 环境
         uses: actions/setup-node@v3
         with:
           node-version: '18'
           cache: 'npm'
-
-      - name: 安装 Rust
+          
+      - name: 设置 Rust 环境
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
-
-      - name: 安装 Rust 依赖
+          
+      - name: 添加 Windows 目标
         run: rustup target add x86_64-pc-windows-msvc
         
-      - name: 安装 Node 依赖
+      - name: 安装依赖
         run: npm ci
         
-      - name: 获取版本号
-        id: package_version
+      - name: 提取版本信息
+        id: version
         shell: pwsh
-        run: echo "version=$(node -p "require('./package.json').version")" >> $env:GITHUB_OUTPUT
-        
+        run: |
+          $version = node -p "require('./package.json').version"
+          echo "version=$version" >> $env:GITHUB_OUTPUT
+          echo "tag_name=v$version" >> $env:GITHUB_OUTPUT
+          echo "release_name=$env:PRODUCT_NAME v$version" >> $env:GITHUB_OUTPUT
+          
       - name: 生成更新日志
         id: changelog
         shell: pwsh
@@ -50,81 +59,66 @@ jobs:
           echo "changes<<EOF" >> $env:GITHUB_OUTPUT
           echo "$commits" >> $env:GITHUB_OUTPUT
           echo "EOF" >> $env:GITHUB_OUTPUT
-
+          
       - name: 构建 Tauri 应用
-        id: tauri
+        id: tauri_build
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: v${{ steps.package_version.outputs.version }}
-          releaseName: 系统字体查看器 v${{ steps.package_version.outputs.version }}
+          tagName: ${{ steps.version.outputs.tag_name }}
+          releaseName: ${{ steps.version.outputs.release_name }}
           releaseBody: |
-            ## 系统字体查看器 v${{ steps.package_version.outputs.version }}
+            ## ${{ steps.version.outputs.release_name }}
             
             ### 更新内容:
             ${{ steps.changelog.outputs.changes }}
             
             构建时间: ${{ github.event.repository.updated_at }}
-            提交SHA: ${{ github.sha }}
+            提交: ${{ github.sha }}
           releaseDraft: false
           prerelease: false
-
-      - name: 准备更新元数据
-        id: metadata
+          
+      - name: 准备更新服务文件
+        id: prepare_update
         shell: pwsh
         run: |
-          # 基本变量
-          $version = "${{ steps.package_version.outputs.version }}"
-          $tagName = "v$version"
-          $date = Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ"
+          # 安装必要工具
+          npm install -g @tauri-apps/cli@latest
           
-          # 确定MSI文件名
-          $artifactPaths = '${{ steps.tauri.outputs.artifactPaths }}'
+          # 提取MSI文件信息
+          $artifactPaths = '${{ steps.tauri_build.outputs.artifactPaths }}'
           Write-Host "构建产物: $artifactPaths"
           
-          $msiFile = "Font-Viewer_${version}_x64_zh-CN.msi"
-          if ($artifactPaths -match '.*Font-Viewer_.+\.msi') {
+          $version = "${{ steps.version.outputs.version }}"
+          $tagName = "${{ steps.version.outputs.tag_name }}"
+          
+          # 查找MSI文件
+          $msiPattern = 'Font-Viewer_.+\.msi'
+          if ($artifactPaths -match $msiPattern) {
             $msiFile = $matches[0].Split('\')[-1]
             Write-Host "找到MSI文件: $msiFile"
           } else {
+            $msiFile = "Font-Viewer_${version}_x64_zh-CN.msi"
             Write-Host "使用默认MSI文件名: $msiFile"
           }
           
           # 输出变量
           echo "msi_file=$msiFile" >> $env:GITHUB_OUTPUT
-          echo "tag_name=$tagName" >> $env:GITHUB_OUTPUT
-
-      - name: 创建并签名更新元数据
-        id: sign
-        shell: pwsh
-        run: |
-          # 安装工具
-          npm install -g @tauri-apps/cli@latest
           
-          # 变量准备
-          $version = "${{ steps.package_version.outputs.version }}"
-          $tagName = "${{ steps.metadata.outputs.tag_name }}"
-          $msiFile = "${{ steps.metadata.outputs.msi_file }}"
-          $msiUrl = "https://github.com/Chatterjay/font-viewer/releases/download/$tagName/$msiFile"
-          
-          # 将GitHub变量保存为文件然后读取，避免YAML解析问题
-          '${{ steps.changelog.outputs.changes }}' | Out-File -FilePath changelog.txt -Encoding utf8
-          $changelog = Get-Content -Path changelog.txt -Raw
-          
-          # 查找本地MSI文件
+          # 检查MSI文件路径
           $localMsiPath = "src-tauri/target/release/bundle/msi/$msiFile"
           if (-not (Test-Path $localMsiPath)) {
-            Write-Host "警告: 本地无法找到MSI文件: $localMsiPath"
+            Write-Host "错误: 找不到MSI文件: $localMsiPath"
             exit 1
           }
           
-          # 将私钥保存到临时文件
+          # 保存私钥到临时文件
           $env:TAURI_PRIVATE_KEY | Out-File -Path tauri.key -Encoding utf8
           
-          # 使用Tauri签名
+          # 签名MSI文件
           Write-Host "正在签名MSI文件..."
           $signature = npx tauri signer sign --key tauri.key --password "$env:TAURI_KEY_PASSWORD" "$localMsiPath"
           
@@ -133,19 +127,19 @@ jobs:
             exit 1
           }
           
-          Write-Host "签名成功!"
+          Write-Host "签名成功"
+          
+          # 准备更新元数据
+          $msiUrl = "https://github.com/Chatterjay/font-viewer/releases/download/$tagName/$msiFile"
+          
+          # 保存更新日志到临时文件，避免YAML解析问题
+          '${{ steps.changelog.outputs.changes }}' | Out-File -FilePath changelog.txt -Encoding utf8
+          $changelog = Get-Content -Path changelog.txt -Raw
           
           # 创建更新元数据
-          $notes = @"
-## 系统字体查看器 v$version
-
-### 更新内容:
-$changelog
-"@
-          
-          $metadata = @{
+          $updateData = @{
             version = $version
-            notes = $notes
+            notes = "## ${{ steps.version.outputs.release_name }}`n`n### 更新内容:`n$changelog"
             pub_date = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
             platforms = @{
               "windows-x86_64" = @{
@@ -155,26 +149,26 @@ $changelog
             }
           }
           
-          # 保存元数据
-          $json = ConvertTo-Json -InputObject $metadata -Depth 10
-          $json | Out-File -FilePath updater.json -Encoding utf8
-          $json | Out-File -FilePath latest-version.json -Encoding utf8
+          # 保存元数据文件
+          $updateJson = ConvertTo-Json -InputObject $updateData -Depth 10
+          $updateJson | Out-File -FilePath font-viewer-updater.json -Encoding utf8
+          $updateJson | Out-File -FilePath latest-version.json -Encoding utf8
           
-          # 清理
+          # 清理临时文件
           Remove-Item -Path tauri.key -Force
           Remove-Item -Path changelog.txt -Force -ErrorAction SilentlyContinue
           
-          Write-Host "更新元数据创建完成"
+          Write-Host "更新元数据已创建"
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-
+          
       - name: 上传更新元数据
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.metadata.outputs.tag_name }}
+          tag_name: ${{ steps.version.outputs.tag_name }}
           files: |
-            updater.json
+            font-viewer-updater.json
             latest-version.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
