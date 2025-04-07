@@ -5,7 +5,7 @@
 
 // 当前版本 - 更新此处会自动更新所有配置文件中的版本号
 // 格式: vX.Y.Z，带前缀v
-export const CURRENT_VERSION = 'v1.1.3'
+export const CURRENT_VERSION = 'v1.1.5'
 
 /**
  * 版本历史记录
@@ -14,8 +14,15 @@ export const CURRENT_VERSION = 'v1.1.3'
  */
 export const VERSION_HISTORY = [
     {
-        version: 'v1.1.3',
-        date: '2025-04-06',
+        version: 'v1.1.5',
+        date: '2025-04-07',
+        changes: [
+            { type: 'feature', text: '测试更新14' }
+        ]
+    },
+    {
+        version: 'v1.1.4',
+        date: '2025-04-07',
         changes: [
             { type: 'feature', text: '测试更新13' }
         ]
