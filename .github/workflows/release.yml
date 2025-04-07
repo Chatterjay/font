@@ -1,174 +1,88 @@
-name: Release
+name: 'publish'
 
-on:
-  push:
-    branches:
-      - main
-      - master
-      - main
-      - master
+on: pull_request
 
-# 添加权限配置
-permissions:
-  contents: write
-  
 jobs:
-  release:
-    runs-on: windows-latest
+  create-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-20.04
+    outputs:
+      release_id: ${{ steps.create-release.outputs.result }}
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v4
+      - name: setup node
+        uses: actions/setup-node@v4
         with:
-          fetch-depth: 0
-
-      - name: Install Node.js
-        uses: actions/setup-node@v3
+          node-version: 20
+      - name: get version
+        run: echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> $GITHUB_ENV
+      - name: create release
+        id: create-release
+        uses: actions/github-script@v6
         with:
-          node-version: '18'
-          cache: 'npm'
+          script: |
+            const { data } = await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: `v${process.env.PACKAGE_VERSION}`,
+              name: `Desktop App v${process.env.PACKAGE_VERSION}`,
+              body: 'Take a look at the assets to download and install this app.',
+              draft: true,
+              prerelease: false
+            })
+            return data.id
 
-      - name: Install Rust
+  build-tauri:
+    needs: create-release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macos-latest, ubuntu-20.04, windows-latest]
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-
-      - name: Install dependencies (Rust)
-        run: rustup target add x86_64-pc-windows-msvc
-        
-      - name: Install dependencies (Node)
-        run: npm ci
-        
-      - name: Get package version
-        id: package_version
-        run: echo "version=$(node -p "require('./package.json').version")" >> $env:GITHUB_OUTPUT
-        shell: pwsh
-        
-      # 提取最近的提交信息，用作更新说明
-      - name: Get recent commits for changelog
-        id: recent_commits
-        shell: pwsh
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-20.04'
         run: |
-          $commits = git log -5 --pretty=format:"- %s (%h)" --abbrev-commit
-          $commits = $commits -join "\n"
-          echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
-          echo "$commits" >> $env:GITHUB_OUTPUT
-          echo "EOF" >> $env:GITHUB_OUTPUT
-
-      # 构建应用程序
-      # 构建应用程序
-      - name: Build Tauri App
-        id: tauri
-        uses: tauri-apps/tauri-action@v0
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: install frontend dependencies
+        run: pnpm install # change this to npm or pnpm depending on which one you use
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
-          tagName: v${{ steps.package_version.outputs.version }}
-          releaseName: Font Viewer v${{ steps.package_version.outputs.version }}
-          tagName: v${{ steps.package_version.outputs.version }}
-          releaseName: Font Viewer v${{ steps.package_version.outputs.version }}
-          releaseBody: |
-            ## 系统字体查看器 v${{ steps.package_version.outputs.version }}
-            
-            ### 更新内容:
-            ${{ steps.recent_commits.outputs.changelog }}
-            
-            构建时间: ${{ github.event.repository.updated_at }}
-            提交SHA: ${{ github.sha }}
-          releaseDraft: false
-          prerelease: false
+          releaseId: ${{ needs.create-release.outputs.release_id }}
 
-      # 生成更新元数据
+  publish-release:
+    permissions:
+      contents: write
+    runs-on: ubuntu-20.04
+    needs: [create-release, build-tauri]
 
-      # 生成更新元数据
-      - name: Generate update metadata
-        id: generate_metadata
-        id: generate_metadata
-        shell: pwsh
-        run: |
-          $version = "${{ steps.package_version.outputs.version }}"
-          $releaseTag = "v$version"
-          $releaseTag = "v$version"
-          
-          # 创建更新说明
-          $notes = @"
-          # 创建更新说明
-          $notes = @"
-          ## 系统字体查看器 v$version
-          
-          ### 更新内容:
-          ${{ steps.recent_commits.outputs.changelog }}
-          "@
-          
-          # 获取当前时间为RFC 3339格式
-          $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-          
-          # 创建基础元数据
-          $metadata = @{
-            version = "$version"
-            notes = $notes
-            pub_date = $pubDate
-            platforms = @{
-              "windows-x86_64" = @{
-                url = "https://github.com/Chatterjay/font-viewer/releases/download/$releaseTag/Font-Viewer_${version}_x64_en-US.msi"
-                signature = ""
-              }
-            }
-          }
-          
-          # 保存元数据到临时文件
-          $metadataJson = ConvertTo-Json -InputObject $metadata -Depth 10
-          $metadataJson | Set-Content -Path updater.json -Encoding UTF8
-          
-          # 将元数据路径保存为输出变量
-          echo "metadata_path=updater.json" >> $env:GITHUB_OUTPUT
-
-      # 签名元数据文件
-      - name: Sign update metadata
-        id: sign_metadata
-        shell: pwsh
-        run: |
-          # 安装Tauri CLI
-          npm install -g @tauri-apps/cli
-          
-          # 保存私钥到临时文件
-          $env:TAURI_PRIVATE_KEY | Out-File -FilePath private.key
-          
-          # 从元数据文件中获取MSI URL
-          $metadata = Get-Content -Path updater.json | ConvertFrom-Json
-          $msiUrl = $metadata.platforms.'windows-x86_64'.url
-          
-          # 下载MSI文件
-          $msiFileName = Split-Path -Path $msiUrl -Leaf
-          Invoke-WebRequest -Uri $msiUrl -OutFile $msiFileName
-          
-          # 使用Tauri CLI签名MSI文件
-          $signature = npx --yes tauri signer sign --key private.key --password "$env:TAURI_KEY_PASSWORD" $msiFileName
-          
-          # 更新元数据中的签名
-          $metadata.platforms.'windows-x86_64'.signature = $signature
-          
-          # 保存更新后的元数据
-          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path updater.json -Encoding UTF8
-          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path latest-version.json -Encoding UTF8
-          
-          # 删除临时文件
-          Remove-Item -Path private.key -Force
-          Remove-Item -Path $msiFileName -Force
+    steps:
+      - name: publish release
+        id: publish-release
+        uses: actions/github-script@v6
         env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-
-      # 上传签名后的元数据文件
-      - name: Upload update metadata
-        uses: softprops/action-gh-release@v1
+          release_id: ${{ needs.create-release.outputs.release_id }}
         with:
-          tag_name: v${{ steps.package_version.outputs.version }}
-          tag_name: v${{ steps.package_version.outputs.version }}
-          files: |
-            updater.json
-            updater.json
-            latest-version.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+          script: |
+            github.rest.repos.updateRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: process.env.release_id,
+              draft: false,
+              prerelease: false
+            })

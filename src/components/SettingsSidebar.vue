@@ -3,7 +3,7 @@ import { ref, inject, onMounted, onUnmounted } from 'vue';
 import ThemeToggle from './ThemeToggle.vue';
 import ChangelogModal from './ChangelogModal.vue';
 import { APP_INITIAL_VERSION } from '../constants/index.js';
-import { isProduction, getEnvironment, compareVersions, fetchLatestVersion } from '../utils/updateUtils.js';
+import { isProduction, getEnvironment } from '../utils/updateUtils.js';
 
 // 应用版本 - 改为响应式
 const appVersion = ref(APP_INITIAL_VERSION);
@@ -19,9 +19,6 @@ const sidebarPosition = ref('right'); // 'left' 或 'right'
 // 是否显示侧边栏
 const isVisible = ref(false);
 
-// 自动更新状态
-const autoUpdate = ref(false);
-
 // 更新日志模态框状态
 const showChangelogModal = ref(false);
 
@@ -32,9 +29,6 @@ const getAppVersion = () => {
   if (savedVersion) {
     appVersion.value = savedVersion;
   }
-  
-  // 这里可以添加获取远程最新版本的逻辑
-  // 实际项目中应该有API调用来获取最新版本
 };
 
 // 切换侧边栏位置
@@ -46,97 +40,6 @@ const toggleSidebarPosition = () => {
 // 切换侧边栏可见性
 const toggleSidebar = () => {
   isVisible.value = !isVisible.value;
-};
-
-// 切换自动更新设置
-const toggleAutoUpdate = () => {
-  // 更新状态 - 直接取反当前值
-  autoUpdate.value = !autoUpdate.value;
-  
-  // 保存到本地存储
-  localStorage.setItem('autoUpdate', JSON.stringify(autoUpdate.value));
-  
-  // 显示提示消息
-  if (autoUpdate.value) {
-    showToast('已开启自动更新', 2000, 'success');
-  } else {
-    showToast('已关闭自动更新', 2000, 'info');
-  }
-};
-
-// 自动检查更新
-const autoCheckUpdate = async () => {
-  if (!autoUpdate.value) return;
-  
-  // 实际项目中，这里应该有一个更完善的逻辑
-  // 包括检查上次更新时间，避免频繁请求更新服务器等
-  
-  // 检查当前环境
-  console.log(`自动检查更新中...(${getEnvironment()})`);
-  
-  try {
-    // 获取最新版本信息
-    const { version: remoteVersion, hasUpdate } = await fetchLatestVersion(appVersion.value);
-    
-    if (hasUpdate) {
-      // 有新版本 - 在任何环境下都显示更新提示
-      appVersion.value = remoteVersion;
-      localStorage.setItem('appVersion', remoteVersion);
-      showToast(`已自动更新到最新版本 ${remoteVersion}`, 2000, 'success');
-    } else if (isProduction()) {
-      // 只在生产环境下才在没有更新时显示当前版本信息
-      showToast(`当前已是最新版本 ${appVersion.value}`, 2000, 'success');
-    }
-  } catch (error) {
-    console.error('自动检查更新失败:', error);
-    // 只在生产环境中，向用户显示错误信息
-    if (isProduction()) {
-      showToast('检查更新失败，请稍后重试', 2000, 'error');
-    }
-  }
-};
-
-// 手动检查更新
-const checkForUpdates = async () => {
-  showToast('正在检查更新...', 2000, 'info');
-  
-  // 设置手动检查标记
-  localStorage.setItem('manualUpdateCheck', 'true');
-  
-  // 检查当前环境
-  console.log(`[SettingsSidebar] 手动检查更新中...(${getEnvironment()})`);
-  
-  try {
-    // 获取最新版本信息
-    const { version: remoteVersion, hasUpdate } = await fetchLatestVersion(appVersion.value);
-    
-    console.log(`[SettingsSidebar] 获取到版本信息: 远程版本=${remoteVersion}, 当前版本=${appVersion.value}, 有更新=${hasUpdate}`);
-    
-    if (hasUpdate) {
-      // 有新版本 - 在任何环境下都显示更新提示
-      // 注意: 在实际生产环境中，我们不应该直接更改本地版本号，而应该提示用户下载更新
-      showToast(`发现新版本: ${remoteVersion}`, 3000, 'success');
-      
-      // 如果要触发全局更新通知，只需保持manualUpdateCheck为true
-      // 更新通知组件会自动处理其余流程
-    } else {
-      // 在任何环境下，手动检查时都显示版本信息
-      showToast(`当前已是最新版本 ${appVersion.value}`, 2000, 'success');
-      
-      // 虽然没有更新，但为了响应用户手动检查的动作，我们保持manualUpdateCheck为true
-      // 这样更新通知组件仍然会显示已是最新版本的提示
-    }
-    
-    // 刷新页面以触发UpdateNotifier组件重新检查
-    // 但要延迟以确保提示信息先显示
-    setTimeout(() => {
-      // 这里不直接刷新页面，而是触发全局更新检查事件
-      window.dispatchEvent(new CustomEvent('check-for-updates'));
-    }, 1000);
-  } catch (error) {
-    console.error('[SettingsSidebar] 手动检查更新失败:', error);
-    showToast('检查更新失败，请稍后重试', 2000, 'error');
-  }
 };
 
 // 显示更新日志
@@ -154,7 +57,6 @@ const exportConfig = async () => {
       theme: localStorage.getItem("theme") || "system",
       layout: localStorage.getItem("layout") || "vertical",
       sidebarPosition: localStorage.getItem("sidebarPosition") || "right",
-      autoUpdate: JSON.parse(localStorage.getItem("autoUpdate") || "false"),
       version: appVersion.value,
       exportDate: new Date().toISOString()
     };
@@ -341,8 +243,7 @@ const processImportedConfig = (content) => {
       ['commercialFonts', JSON.stringify(config.commercialFonts || [])],
       ['theme', config.theme || 'system'],
       ['layout', config.layout || 'vertical'],
-      ['sidebarPosition', config.sidebarPosition || 'right'],
-      ['autoUpdate', JSON.stringify(config.autoUpdate !== undefined ? config.autoUpdate : false)]
+      ['sidebarPosition', config.sidebarPosition || 'right']
     ];
     
     try {
@@ -444,19 +345,8 @@ onMounted(() => {
     sidebarPosition.value = savedPosition;
   }
   
-  // 加载自动更新设置
-  const savedAutoUpdate = localStorage.getItem('autoUpdate');
-  if (savedAutoUpdate !== null) {
-    autoUpdate.value = JSON.parse(savedAutoUpdate);
-  }
-  
   // 获取最新版本信息
   getAppVersion();
-  
-  // 如果启用了自动更新，则执行自动更新检查
-  if (autoUpdate.value) {
-    autoCheckUpdate();
-  }
   
   document.addEventListener('click', handleClickOutside);
 });
@@ -517,38 +407,6 @@ onUnmounted(() => {
         <div class="settings-item">
           <label>主题设置</label>
           <ThemeToggle />
-        </div>
-      </div>
-
-      <!-- 新增更新设置部分 -->
-      <div class="settings-section">
-        <h3>更新设置</h3>
-        
-        <div class="settings-item">
-          <label>自动更新</label>
-          <div class="toggle-switch">
-            <input type="checkbox" id="auto-update" :checked="autoUpdate" @change="toggleAutoUpdate">
-            <label for="auto-update" class="toggle-label"></label>
-            <span class="toggle-text">{{ autoUpdate ? '已开启' : '已关闭' }}</span>
-          </div>
-        </div>
-        
-        <div class="settings-item">
-          <button class="action-btn" @click="checkForUpdates">
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <path fill="currentColor" d="M21 10.12h-6.78l2.74-2.82c-2.73-2.7-7.15-2.8-9.88-.1-2.73 2.71-2.73 7.08 0 9.79s7.15 2.71 9.88 0C18.32 15.65 19 14.08 19 12.1h2c0 1.98-.88 4.55-2.64 6.29-3.51 3.48-9.21 3.48-12.72 0-3.5-3.47-3.53-9.11-.02-12.58s9.14-3.47 12.65 0L21 3v7.12zM12.5 8v4.25l3.5 2.08-.72 1.21L11 13V8h1.5z"/>
-            </svg>
-            <span>检查更新</span>
-          </button>
-        </div>
-        
-        <div class="settings-item">
-          <button class="action-btn" @click="showChangelog">
-            <svg viewBox="0 0 24 24" width="20" height="20">
-              <path fill="currentColor" d="M19 3h-4.18C14.4 1.84 13.3 1 12 1c-1.3 0-2.4.84-2.82 2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 0c.55 0 1 .45 1 1s-.45 1-1 1-1-.45-1-1 .45-1 1-1zm2 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/>
-            </svg>
-            <span>查看更新日志</span>
-          </button>
         </div>
       </div>
 
@@ -773,57 +631,6 @@ onUnmounted(() => {
 
 .action-btn svg {
   flex-shrink: 0;
-}
-
-/* 切换开关样式 */
-.toggle-switch {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.toggle-switch input[type="checkbox"] {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.toggle-label {
-  position: relative;
-  display: inline-block;
-  width: 42px;
-  height: 22px;
-  background-color: var(--background-tertiary);
-  border-radius: 34px;
-  transition: all 0.3s;
-  cursor: pointer;
-}
-
-.toggle-label::after {
-  content: "";
-  position: absolute;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background-color: white;
-  top: 2px;
-  left: 2px;
-  transition: all 0.3s;
-}
-
-input:checked + .toggle-label {
-  background-color: var(--primary-color);
-}
-
-input:checked + .toggle-label::after {
-  transform: translateX(20px);
-}
-
-.toggle-text {
-  font-size: 0.85rem;
-  color: var(--text-primary);
-  min-width: 42px;
 }
 
 /* 版本号样式 */
