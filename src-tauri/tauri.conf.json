@@ -64,7 +64,7 @@
       "windows": {
         "installMode": "passive"
       },
-      "macOS": {
+      "darwin": {
         "installMode": "passive"
       },
       "dialog": true,
