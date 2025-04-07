@@ -63,7 +63,7 @@
         },
         "active": true,
         "endpoints": [
-          "https://releases.myapp.com/{{target}}/{{arch}}/{{current_version}}"
+          "https://liboq.github.io/Chatterjay/install.json"
         ],
         "dialog": false,
         "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE0QkY5MEQwQjVBODc5NjcKUldSbmVhaTEwSkMvRk84VEl4azMwRytwUFpBdDl3OWQydUErQlhCYTN5QUUvVnh0dW1tSXliM2cK"
