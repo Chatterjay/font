@@ -35,11 +35,22 @@ impl FontCache {
             return Ok(());
         }
         
-        // Windows 系统字体目录
-        let font_dirs = vec![
-            "C:\\Windows\\Fonts",
-            "C:\\Users\\Public\\AppData\\Local\\Microsoft\\Windows\\Fonts",
-        ];
+        // 不同操作系统的字体目录
+        let font_dirs = if cfg!(target_os = "windows") {
+            vec![
+                "C:\\Windows\\Fonts",
+                "C:\\Users\\Public\\AppData\\Local\\Microsoft\\Windows\\Fonts",
+            ]
+        } else if cfg!(target_os = "macos") {
+            vec![
+                "/System/Library/Fonts",
+                "/Library/Fonts",
+                "/Users/Shared/Library/Fonts",
+                &format!("{}/Library/Fonts", std::env::var("HOME").unwrap_or_default()),
+            ]
+        } else {
+            vec![] // 其他系统（包括Linux）不再支持
+        };
 
         for dir in font_dirs {
             if let Ok(entries) = fs::read_dir(dir) {
