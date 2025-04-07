@@ -1,13 +1,13 @@
 name: "publish"
 
-on: 
+on:
   push:
   # Sequence of patterns matched against refs/tags
     branches:
       - main
       - release
   workflow_dispatch:
-
+  
 jobs:
   create-release:
     permissions:
@@ -118,7 +118,7 @@ jobs:
       - run: pnpm i
       - run: pnpm updater
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
 
       - name: Deploy install.json
         uses: peaceiris/actions-gh-pages@v3

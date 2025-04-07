@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+#[cfg(debug_assertions)]
 use tauri::Manager;
 use std::fs;
 use std::sync::{Arc, Mutex};
@@ -171,11 +172,11 @@ fn main() {
     let font_cache = Arc::new(Mutex::new(FontCache::new()));
 
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(|_app| {
             #[cfg(debug_assertions)]
             {
                 // 在调试模式下，打开开发者工具
-                let window = app.get_window("main").unwrap();
+                let window = _app.get_window("main").unwrap();
                 window.open_devtools();
             }
             
