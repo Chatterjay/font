@@ -1,10 +1,7 @@
 name: 'publish'
 
-on:
-  push:
-    branches:
-      - main
-      - release
+on: pull_request
+
 
 
 jobs:
