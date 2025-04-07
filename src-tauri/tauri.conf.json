@@ -61,12 +61,6 @@
       "csp": null
     },
     "updater": {
-      "windows": {
-        "installMode": "passive"
-      },
-      "darwin": {
-        "installMode": "passive"
-      },
       "dialog": true,
       "active": true,
       "endpoints": [
