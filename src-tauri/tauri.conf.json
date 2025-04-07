@@ -20,11 +20,7 @@
         "all": false,
         "scope": [
           "C:\\Windows\\Fonts",
-          "C:\\Users\\Public\\AppData\\Local\\Microsoft\\Windows\\Fonts",
-          "/System/Library/Fonts/**",
-          "/Library/Fonts/**",
-          "/Users/Shared/Library/Fonts/**",
-          "$HOME/Library/Fonts/**"
+          "C:\\Users\\Public\\AppData\\Local\\Microsoft\\Windows\\Fonts"
         ],
         "readFile": true,
         "writeFile": true,
@@ -41,7 +37,7 @@
     },
     "bundle": {
       "active": true,
-      "targets": [ "nsis", "msi", "app", "dmg", "updater" ],
+      "targets": [ "nsis", "msi", "updater" ],
       "identifier": "com.font-viewer.dev",
       "icon": [
         "icons/32x32.png",
