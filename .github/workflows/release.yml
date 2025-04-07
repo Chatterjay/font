@@ -5,7 +5,7 @@ on:
   # Sequence of patterns matched against refs/tags
     branches:
       - main
-      release
+      - release
   workflow_dispatch:
 
 jobs:
