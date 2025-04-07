@@ -56,18 +56,16 @@
     "security": {
       "csp": null
     },
-    "tauri": {
-      "updater": {
-        "windows": {
-          "installMode": "passive"
-        },
-        "active": true,
-        "endpoints": [
-          "https://Chatterjay.github.io/font/install.json"
-        ],
-        "dialog": true,
-        "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE0QkY5MEQwQjVBODc5NjcKUldSbmVhaTEwSkMvRk84VEl4azMwRytwUFpBdDl3OWQydUErQlhCYTN5QUUvVnh0dW1tSXliM2cK"
-      }
+    "updater": {
+      "windows": {
+        "installMode": "passive"
+      },
+      "dialog": true,
+      "active": true,
+      "endpoints": [
+        "https://Chatterjay.github.io/font/install.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE0QkY5MEQwQjVBODc5NjcKUldSbmVhaTEwSkMvRk84VEl4azMwRytwUFpBdDl3OWQydUErQlhCYTN5QUUvVnh0dW1tSXliM2cK"
     },
     "windows": [
       {
