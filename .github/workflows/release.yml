@@ -86,6 +86,15 @@ jobs:
           releaseId: ${{ needs.create-release.outputs.release_id }}
           args: --target x86_64-pc-windows-msvc
           distPath: "../dist"
+          artifactPath: ./src-tauri/target/x86_64-pc-windows-msvc/release/bundle
+      
+      # 上传签名文件作为工作流程产物
+      - name: Upload signatures
+        uses: actions/upload-artifact@v2
+        with:
+          name: tauri-signatures
+          path: ./src-tauri/target/x86_64-pc-windows-msvc/release/bundle/**/*.sig
+          if-no-files-found: warn
 
   publish-release:
     permissions:
@@ -127,17 +136,34 @@ jobs:
           version: 8
       - uses: actions/checkout@v2
       - run: pnpm i
+      
+      # 下载签名文件
+      - name: Download signatures
+        uses: actions/download-artifact@v2
+        with:
+          name: tauri-signatures
+          path: ./signatures
+      
       - name: Add updater script
         run: |
           mkdir -p updater
+          
+          # 尝试找到签名文件
+          SIGNATURE_FILE=$(find ./signatures -name "*.sig" | grep -i nsis | head -n 1 || echo "")
+          SIGNATURE=""
+          
+          if [ -f "$SIGNATURE_FILE" ]; then
+            SIGNATURE=$(cat "$SIGNATURE_FILE" | base64 -w 0)
+          fi
+          
           echo '{
             "version": "'$PACKAGE_VERSION'",
             "notes": "See the assets to download this version and install.",
             "pub_date": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'",
             "platforms": {
               "windows-x86_64": {
-                "signature": "",
-                "url": "https://github.com/Chatterjay/font/releases/latest/download/Font Viewer_'$PACKAGE_VERSION'_x64-setup.exe"
+                "signature": "'$SIGNATURE'",
+                "url": "https://github.com/Chatterjay/font/releases/download/v'$PACKAGE_VERSION'/Font%20Viewer_'$PACKAGE_VERSION'_x64-setup.exe"
               }
             }
           }' > updater/install.json
