@@ -1,9 +1,10 @@
 name: 'publish'
 
-on: push:
-      branches:
-        - main
-        - release
+on:
+  push:
+    branches:
+      - main
+      - release
 
 
 jobs:
