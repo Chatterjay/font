@@ -1,4 +1,3 @@
-// scripts/updater.mjs
 
 import fetch from 'node-fetch';
 import { getOctokit, context } from '@actions/github';
@@ -54,6 +53,12 @@ async function updater() {
             // 'windows-i686': { signature: '', url: '' }, // no supported
         },
     };
+
+    // 获取签名文件内容
+    async function getSignature(url) {
+        const response = await fetch(url);
+        return await response.text();
+    }
 
     const setAsset = async (asset, reg, platforms) => {
         let sig = '';

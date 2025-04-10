@@ -1,4 +1,3 @@
-// scripts/release.mjs
 
 import { createRequire } from 'module';
 import { execSync } from 'child_process';
