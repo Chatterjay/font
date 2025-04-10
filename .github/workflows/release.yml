@@ -1,96 +1,101 @@
-name: Windows Release Pipeline
+name: Windows Build & Release
 
 on:
   push:
-    branches:
-      - main
+      branches: [ main ]
 
 jobs:
-  build-sign-publish:
-    name: Build, Sign & Publish
+  build-and-publish:
     runs-on: windows-latest
     permissions:
-      contents: write  # 需要写权限上传 Release 文件
+      contents: write
 
     steps:
-      # ---------- 初始化环境 ----------
+      # ========== 初始化阶段 ==========
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ---------- 清理 Rust 缓存 ----------
-      - name: Purge Rust cache
-        run: |
-          cargo clean
-          Remove-Item -Recurse -Force ~/.cargo/registry
-          Remove-Item -Recurse -Force ~/.cargo/git
-
-      # ---------- 配置 Node.js 环境 ----------
+      # ========== 环境配置 ==========
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: 'npm'
 
-      # ---------- 配置 Rust 工具链 ----------
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
 
-      # ---------- 安装 Tauri CLI ----------
-      - name: Install Tauri
+      # ========== 智能缓存清理 ==========
+      - name: Clean workspace
+        shell: pwsh
+        run: |
+          # 仅在存在 Cargo.toml 时清理
+          if (Test-Path src-tauri/Cargo.toml) {
+              cd src-tauri
+              cargo clean
+              # 安全清理缓存目录
+              $cargoPaths = @(
+                  "$env:USERPROFILE\.cargo\registry",
+                  "$env:USERPROFILE\.cargo\git"
+              )
+              foreach ($path in $cargoPaths) {
+                  if (Test-Path $path) {
+                      Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
+                  }
+              }
+          }
+
+      # ========== 依赖安装 ==========
+      - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli
 
-      # ---------- 安装项目依赖 ----------
-      - name: Install dependencies
+      - name: Install project dependencies
         run: |
           npm install
           cd src-tauri
-          cargo generate-lockfile  # 预生成锁文件
-          cd ..
-
-      # ---------- 修复锁文件问题 ----------
-      - name: Fix Cargo.lock
-        run: |
-          cd src-tauri
-          # 强制删除旧锁文件并重新生成
-          Remove-Item -Force Cargo.lock -ErrorAction SilentlyContinue
+          # 强制重新生成锁文件
+          if (Test-Path Cargo.lock) { Remove-Item Cargo.lock }
           cargo generate-lockfile
           cd ..
 
-      # ---------- 构建签名步骤 ----------
-      - name: Build Windows MSI
-        run: npm run tauri build -- --target x86_64-pc-windows-msvc
+      # ========== 构建阶段 ==========
+      - name: Build signed MSI
+        shell: pwsh
+        run: |
+          cd src-tauri
+          npm run tauri build -- --target x86_64-pc-windows-msvc
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
-      # ---------- 生成更新清单 ----------
-      - name: Generate Update Manifest
+      # ========== 生成更新清单 ==========
+      - name: Generate latest.json
         shell: pwsh
         run: |
           $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          $msiName = "font-viewer_${version}_x64_en-US.msi"
-          $sigContent = Get-Content "src-tauri/target/release/$msiName.sig" -Raw
+          $msiPath = Get-Item "src-tauri/target/release/*.msi"
+          $msiName = $msiPath.Name
+          
+          # 自动获取签名内容
+          $sigContent = Get-Content "$($msiPath.FullName).sig" -Raw
 
-          # 使用 Here-String 生成 JSON
-          @"
-          {
-            "version": "$version",
-            "notes": "Automated release",
-            "pub_date": "$(Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")",
-            "platforms": {
-              "windows-x86_64": {
-                "signature": "$sigContent",
-                "url": "https://github.com/chatterjay/font-viewer/releases/download/v$version/$msiName"
+          [ordered]@{
+            version = $version
+            notes = "Auto-generated release"
+            pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+            platforms = @{
+              "windows-x86_64" = @{
+                signature = $sigContent.Trim()
+                url = "https://github.com/chatterjay/font-viewer/releases/download/v$version/$msiName"
               }
             }
-          }
-          "@ | Out-File -Encoding utf8 latest.json
+          } | ConvertTo-Json -Depth 3 | Out-File -Encoding utf8 latest.json
 
-      # ---------- 发布到 GitHub Releases ----------
-      - name: Publish Release
+      # ========== 发布到 GitHub Releases ==========
+      - name: Upload Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
@@ -98,4 +103,4 @@ jobs:
             src-tauri/target/release/*.msi
             latest.json
           draft: false
-          prerelease: false
+          overwrite: true
