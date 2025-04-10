@@ -77,14 +77,15 @@ jobs:
           # 验证输出
           Get-Content latest.json | Out-Host
 
+      
       - name: Upload Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             src-tauri/target/release/app.msi
             latest.json
-          draft: falsename: Windows Build & AutoUpdate
-
+          draft: false
+    name: Windows Build & AutoUpdate
 on:
   push:
     tags:
