@@ -1,694 +1,100 @@
-name: Windows Build & Auto-Update
+name: 'publish'
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - release
+    
 
 jobs:
-  build-sign-publish:
-    runs-on: windows-latest
+  publish-tauri:
     permissions:
       contents: write
+    outputs:
+      release_id: ${{ steps.tauri-action.outputs.releaseId }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest' # for Arm based macs (M1 and above).
+            args: '--target aarch64-apple-darwin'
+          - platform: 'macos-latest' # for Intel based macs.
+            args: '--target x86_64-apple-darwin'
+          - platform: 'ubuntu-22.04' # for Tauri v1 you could replace this with ubuntu-20.04.
+            args: ''
+          - platform: 'windows-latest'
+            args: ''
 
+    runs-on: ${{ matrix.platform }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+
+      - name: install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.0-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: install frontend dependencies
+        run: yarn install
+
+      - name: Set TAURI_PRIVATE_KEY environment variable
+        if: matrix.platform == 'macos-latest'
+        env:
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        run: |
+          echo "TAURI_PRIVATE_KEY=$TAURI_PRIVATE_KEY" >> $GITHUB_ENV
+          echo "TAURI_KEY_PASSWORD=$TAURI_KEY_PASSWORD" >> $GITHUB_ENV
+      - id: tauri-action
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'App v__VERSION__'
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+  update-updater:
+    needs: publish-tauri
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: 'npm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: x86_64-pc-windows-msvc
-
-      - name: Clean workspace
-        shell: pwsh
-        run: |
-          if (Test-Path src-tauri/Cargo.toml) {
-              cd src-tauri
-              cargo clean
-              Remove-Item -Force Cargo.lock
-              cargo generate-lockfile
-              cd ..
-          }
-
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
+          node-version: lts/*
 
       - name: Install dependencies
-        run: |
-          npm install
-          cd src-tauri
-          cargo generate-lockfile
-          cd ..
+        run: yarn install
 
-      - name: Build signed MSI
-        shell: pwsh
+      - name: Generate updater file
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-        run: |
-          cd src-tauri
-          npm run tauri build -- --target x86_64-pc-windows-msvc --sign --verbose
-          # 强制验证产物目录
-          if (-not (Test-Path "target/x86_64-pc-windows-msvc/release/bundle/msi")) {
-            Write-Error "##[error] 构建产物目录缺失"
-            Get-ChildItem target -Recurse | Out-Host
-            exit 1
-          }
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: yarn updater
 
-      - name: Generate update manifest
-        shell: pwsh
-        run: |
-          $version = if ($env:GITHUB_REF -like "refs/tags/*") {
-            $env:GITHUB_REF -replace 'refs/tags/v', ''
-          } else {
-            $env:GITHUB_SHA.Substring(0,7)
-          }
-
-          $msiFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" | Select-Object -First 1
-          $sigFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.sig" | Select-Object -First 1
-
-          if (-not $msiFile -or -not $sigFile) {
-            Write-Error "##[error] 构建产物文件缺失"
-            exit 1
-          }
-
-          [PSCustomObject]@{
-            version = $version
-            platforms = @{
-              "windows-x86_64" = @{
-                signature = (Get-Content $sigFile.FullName -Raw).Trim()
-                url = "https://github.com/chatterjay/font/releases/download/v$version/$($msiFile.Name)"
-              }
-            }
-          } | ConvertTo-Json -Depth 3 | Out-File latest.json
-
-      - name: Publish Release
+      - name: Upload updater file to release
         uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ github.ref_name }}
-          files: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            latest.json
-          draft: false
-          overwrite: truename: Windows Build & Auto-Update
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  build-sign-publish:
-    runs-on: windows-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: 'npm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: x86_64-pc-windows-msvc
-
-      - name: Clean workspace
-        shell: pwsh
-        run: |
-          if (Test-Path src-tauri/Cargo.toml) {
-              cd src-tauri
-              cargo clean
-              Remove-Item -Force Cargo.lock
-              cargo generate-lockfile
-              cd ..
-          }
-
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
-
-      - name: Install dependencies
-        run: |
-          npm install
-          cd src-tauri
-          cargo generate-lockfile
-          cd ..
-
-      - name: Build signed MSI
-        shell: pwsh
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-        run: |
-          cd src-tauri
-          npm run tauri build -- --target x86_64-pc-windows-msvc --sign --verbose
-          # 强制验证产物目录
-          if (-not (Test-Path "target/x86_64-pc-windows-msvc/release/bundle/msi")) {
-            Write-Error "##[error] 构建产物目录缺失"
-            Get-ChildItem target -Recurse | Out-Host
-            exit 1
-          }
-
-      - name: Generate update manifest
-        shell: pwsh
-        run: |
-          $version = if ($env:GITHUB_REF -like "refs/tags/*") {
-            $env:GITHUB_REF -replace 'refs/tags/v', ''
-          } else {
-            $env:GITHUB_SHA.Substring(0,7)
-          }
-
-          $msiFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" | Select-Object -First 1
-          $sigFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.sig" | Select-Object -First 1
-
-          if (-not $msiFile -or -not $sigFile) {
-            Write-Error "##[error] 构建产物文件缺失"
-            exit 1
-          }
-
-          [PSCustomObject]@{
-            version = $version
-            platforms = @{
-              "windows-x86_64" = @{
-                signature = (Get-Content $sigFile.FullName -Raw).Trim()
-                url = "https://github.com/chatterjay/font/releases/download/v$version/$($msiFile.Name)"
-              }
-            }
-          } | ConvertTo-Json -Depth 3 | Out-File latest.json
-
-      - name: Publish Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            latest.json
-          draft: false
-          overwrite: truename: Windows Build & Auto-Update
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  build-sign-publish:
-    runs-on: windows-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: 'npm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: x86_64-pc-windows-msvc
-
-      - name: Clean workspace
-        shell: pwsh
-        run: |
-          if (Test-Path src-tauri/Cargo.toml) {
-              cd src-tauri
-              cargo clean
-              Remove-Item -Force Cargo.lock
-              cargo generate-lockfile
-              cd ..
-          }
-
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
-
-      - name: Install dependencies
-        run: |
-          npm install
-          cd src-tauri
-          cargo generate-lockfile
-          cd ..
-
-      - name: Build signed MSI
-        shell: pwsh
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-        run: |
-          cd src-tauri
-          npm run tauri build -- --target x86_64-pc-windows-msvc --sign --verbose
-          # 强制验证产物目录
-          if (-not (Test-Path "target/x86_64-pc-windows-msvc/release/bundle/msi")) {
-            Write-Error "##[error] 构建产物目录缺失"
-            Get-ChildItem target -Recurse | Out-Host
-            exit 1
-          }
-
-      - name: Generate update manifest
-        shell: pwsh
-        run: |
-          $version = if ($env:GITHUB_REF -like "refs/tags/*") {
-            $env:GITHUB_REF -replace 'refs/tags/v', ''
-          } else {
-            $env:GITHUB_SHA.Substring(0,7)
-          }
-
-          $msiFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" | Select-Object -First 1
-          $sigFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.sig" | Select-Object -First 1
-
-          if (-not $msiFile -or -not $sigFile) {
-            Write-Error "##[error] 构建产物文件缺失"
-            exit 1
-          }
-
-          [PSCustomObject]@{
-            version = $version
-            platforms = @{
-              "windows-x86_64" = @{
-                signature = (Get-Content $sigFile.FullName -Raw).Trim()
-                url = "https://github.com/chatterjay/font/releases/download/v$version/$($msiFile.Name)"
-              }
-            }
-          } | ConvertTo-Json -Depth 3 | Out-File latest.json
-
-      - name: Publish Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            latest.json
-          draft: false
-          overwrite: truename: Windows Build & Auto-Update
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  build-sign-publish:
-    runs-on: windows-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: 'npm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: x86_64-pc-windows-msvc
-
-      - name: Clean workspace
-        shell: pwsh
-        run: |
-          if (Test-Path src-tauri/Cargo.toml) {
-              cd src-tauri
-              cargo clean
-              Remove-Item -Force Cargo.lock
-              cargo generate-lockfile
-              cd ..
-          }
-
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
-
-      - name: Install dependencies
-        run: |
-          npm install
-          cd src-tauri
-          cargo generate-lockfile
-          cd ..
-
-      - name: Build signed MSI
-        shell: pwsh
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-        run: |
-          cd src-tauri
-          npm run tauri build -- --target x86_64-pc-windows-msvc --sign --verbose
-          # 强制验证产物目录
-          if (-not (Test-Path "target/x86_64-pc-windows-msvc/release/bundle/msi")) {
-            Write-Error "##[error] 构建产物目录缺失"
-            Get-ChildItem target -Recurse | Out-Host
-            exit 1
-          }
-
-      - name: Generate update manifest
-        shell: pwsh
-        run: |
-          $version = if ($env:GITHUB_REF -like "refs/tags/*") {
-            $env:GITHUB_REF -replace 'refs/tags/v', ''
-          } else {
-            $env:GITHUB_SHA.Substring(0,7)
-          }
-
-          $msiFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" | Select-Object -First 1
-          $sigFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.sig" | Select-Object -First 1
-
-          if (-not $msiFile -or -not $sigFile) {
-            Write-Error "##[error] 构建产物文件缺失"
-            exit 1
-          }
-
-          [PSCustomObject]@{
-            version = $version
-            platforms = @{
-              "windows-x86_64" = @{
-                signature = (Get-Content $sigFile.FullName -Raw).Trim()
-                url = "https://github.com/chatterjay/font/releases/download/v$version/$($msiFile.Name)"
-              }
-            }
-          } | ConvertTo-Json -Depth 3 | Out-File latest.json
-
-      - name: Publish Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            latest.json
-          draft: false
-          overwrite: truename: Windows Build & Auto-Update
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  build-sign-publish:
-    runs-on: windows-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: 'npm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: x86_64-pc-windows-msvc
-
-      - name: Clean workspace
-        shell: pwsh
-        run: |
-          if (Test-Path src-tauri/Cargo.toml) {
-              cd src-tauri
-              cargo clean
-              Remove-Item -Force Cargo.lock
-              cargo generate-lockfile
-              cd ..
-          }
-
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
-
-      - name: Install dependencies
-        run: |
-          npm install
-          cd src-tauri
-          cargo generate-lockfile
-          cd ..
-
-      - name: Build signed MSI
-        shell: pwsh
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-        run: |
-          cd src-tauri
-          npm run tauri build -- --target x86_64-pc-windows-msvc --sign --verbose
-          # 强制验证产物目录
-          if (-not (Test-Path "target/x86_64-pc-windows-msvc/release/bundle/msi")) {
-            Write-Error "##[error] 构建产物目录缺失"
-            Get-ChildItem target -Recurse | Out-Host
-            exit 1
-          }
-
-      - name: Generate update manifest
-        shell: pwsh
-        run: |
-          $version = if ($env:GITHUB_REF -like "refs/tags/*") {
-            $env:GITHUB_REF -replace 'refs/tags/v', ''
-          } else {
-            $env:GITHUB_SHA.Substring(0,7)
-          }
-
-          $msiFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" | Select-Object -First 1
-          $sigFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.sig" | Select-Object -First 1
-
-          if (-not $msiFile -or -not $sigFile) {
-            Write-Error "##[error] 构建产物文件缺失"
-            exit 1
-          }
-
-          [PSCustomObject]@{
-            version = $version
-            platforms = @{
-              "windows-x86_64" = @{
-                signature = (Get-Content $sigFile.FullName -Raw).Trim()
-                url = "https://github.com/chatterjay/font/releases/download/v$version/$($msiFile.Name)"
-              }
-            }
-          } | ConvertTo-Json -Depth 3 | Out-File latest.json
-
-      - name: Publish Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            latest.json
-          draft: false
-          overwrite: truename: Windows Build & Auto-Update
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  build-sign-publish:
-    runs-on: windows-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: 'npm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: x86_64-pc-windows-msvc
-
-      - name: Clean workspace
-        shell: pwsh
-        run: |
-          if (Test-Path src-tauri/Cargo.toml) {
-              cd src-tauri
-              cargo clean
-              Remove-Item -Force Cargo.lock
-              cargo generate-lockfile
-              cd ..
-          }
-
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
-
-      - name: Install dependencies
-        run: |
-          npm install
-          cd src-tauri
-          cargo generate-lockfile
-          cd ..
-
-      - name: Build signed MSI
-        shell: pwsh
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-        run: |
-          cd src-tauri
-          npm run tauri build -- --target x86_64-pc-windows-msvc --sign --verbose
-          # 强制验证产物目录
-          if (-not (Test-Path "target/x86_64-pc-windows-msvc/release/bundle/msi")) {
-            Write-Error "##[error] 构建产物目录缺失"
-            Get-ChildItem target -Recurse | Out-Host
-            exit 1
-          }
-
-      - name: Generate update manifest
-        shell: pwsh
-        run: |
-          $version = if ($env:GITHUB_REF -like "refs/tags/*") {
-            $env:GITHUB_REF -replace 'refs/tags/v', ''
-          } else {
-            $env:GITHUB_SHA.Substring(0,7)
-          }
-
-          $msiFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" | Select-Object -First 1
-          $sigFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.sig" | Select-Object -First 1
-
-          if (-not $msiFile -or -not $sigFile) {
-            Write-Error "##[error] 构建产物文件缺失"
-            exit 1
-          }
-
-          [PSCustomObject]@{
-            version = $version
-            platforms = @{
-              "windows-x86_64" = @{
-                signature = (Get-Content $sigFile.FullName -Raw).Trim()
-                url = "https://github.com/chatterjay/font/releases/download/v$version/$($msiFile.Name)"
-              }
-            }
-          } | ConvertTo-Json -Depth 3 | Out-File latest.json
-
-      - name: Publish Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            latest.json
-          draft: false
-          overwrite: truename: Windows Build & Auto-Update
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  build-sign-publish:
-    runs-on: windows-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: 'npm'
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
-          targets: x86_64-pc-windows-msvc
-
-      - name: Clean workspace
-        shell: pwsh
-        run: |
-          if (Test-Path src-tauri/Cargo.toml) {
-              cd src-tauri
-              cargo clean
-              Remove-Item -Force Cargo.lock
-              cargo generate-lockfile
-              cd ..
-          }
-
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
-
-      - name: Install dependencies
-        run: |
-          npm install
-          cd src-tauri
-          cargo generate-lockfile
-          cd ..
-
-      - name: Build signed MSI
-        shell: pwsh
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-        run: |
-          cd src-tauri
-          npm run tauri build -- --target x86_64-pc-windows-msvc --sign --verbose
-          # 强制验证产物目录
-          if (-not (Test-Path "target/x86_64-pc-windows-msvc/release/bundle/msi")) {
-            Write-Error "##[error] 构建产物目录缺失"
-            Get-ChildItem target -Recurse | Out-Host
-            exit 1
-          }
-
-      - name: Generate update manifest
-        shell: pwsh
-        run: |
-          $version = if ($env:GITHUB_REF -like "refs/tags/*") {
-            $env:GITHUB_REF -replace 'refs/tags/v', ''
-          } else {
-            $env:GITHUB_SHA.Substring(0,7)
-          }
-
-          $msiFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" | Select-Object -First 1
-          $sigFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.sig" | Select-Object -First 1
-
-          if (-not $msiFile -or -not $sigFile) {
-            Write-Error "##[error] 构建产物文件缺失"
-            exit 1
-          }
-
-          [PSCustomObject]@{
-            version = $version
-            platforms = @{
-              "windows-x86_64" = @{
-                signature = (Get-Content $sigFile.FullName -Raw).Trim()
-                url = "https://github.com/chatterjay/font/releases/download/v$version/$($msiFile.Name)"
-              }
-            }
-          } | ConvertTo-Json -Depth 3 | Out-File latest.json
-
-      - name: Publish Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            latest.json
-          draft: false
-          overwrite: true
+          files: ./updater/install.json
