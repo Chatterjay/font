@@ -2,8 +2,7 @@ name: Windows Build & Auto-Update
 
 on:
   push:
-    branches: [ main ]
-  workflow_dispatch:  # 允许手动触发
+      branches: [ main ]
 
 jobs:
   build-sign-publish:
@@ -12,82 +11,116 @@ jobs:
       contents: write
 
     steps:
+      # ========== 初始化阶段 ==========
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 确保获取完整的 git 历史记录
 
+      # ========== 环境配置 ==========
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: 'npm'
 
-      - name: Install Rust toolchain
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
 
-      - name: Clean workspace
+      # ========== 密钥验证阶段 ==========
+      - name: Validate Key Pair
         shell: pwsh
         run: |
-          if (Test-Path src-tauri/Cargo.toml) {
-              cd src-tauri
-              cargo clean
-              Remove-Item -Force Cargo.lock
-              cargo generate-lockfile
-              cd ..
+          # 从配置文件提取公钥
+          $pubkey = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).tauri.updater.pubkey
+          Write-Output "配置文件中的公钥："
+          Write-Output $pubkey
+
+          # 验证私钥格式
+          if (-not $env:TAURI_PRIVATE_KEY.Contains('BEGIN PRIVATE KEY')) {
+              Write-Error "##[error] TAURI_PRIVATE_KEY 格式错误，必须包含完整的 PEM 格式"
+              exit 1
           }
 
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
-
-      - name: Install dependencies
-        run: |
-          npm install
-          cd src-tauri
-          cargo generate-lockfile
-          cd ..
-
-      - name: Build signed MSI
+      # ========== 构建阶段 ==========
+      - name: Build with Tauri
         shell: pwsh
         run: |
           cd src-tauri
-          npm run tauri build -- --target x86_64-pc-windows-msvc --sign  # 关键修复
-          if (-not (Test-Path "target/x86_64-pc-windows-msvc/release/bundle/msi")) {
-            exit 1
+
+          # 清理旧构建
+          Remove-Item -Recurse -Force target -ErrorAction SilentlyContinue
+
+          # 显示详细构建信息
+          npm run tauri info
+
+          # 执行构建（带详细日志）
+          npm run tauri build -- --target x86_64-pc-windows-msvc --verbose
+
+          # 验证构建产物
+          $msiPath = Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" -Recurse
+          $sigPath = Get-ChildItem "target/x86_64-pc-windows-msvc/release/bundle/msi/*.sig" -Recurse
+
+          if (-not $msiPath -or -not $sigPath) {
+              Write-Error "##[error] 构建产物缺失"
+              Write-Output "当前目录结构："
+              tree /F target
+              exit 1
           }
 
-      - name: Generate update manifest
-        shell: pwsh
+          # 标准化输出路径
+          New-Item -ItemType Directory -Force -Path target/release-bundle | Out-Null
+          Copy-Item $msiPath.FullName target/release-bundle/
+          Copy-Item $sigPath.FullName target/release-bundle/
         env:
-          VERSION: ${{ (if ($env:GITHUB_REF -like "refs/tags/*") { $env:GITHUB_REF -replace 'refs/tags/v', '' } else { $env:GITHUB_SHA.Substring(0,7) }) }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+      # ========== 生成更新清单 ==========
+      - name: Generate latest.json
+        shell: pwsh
         run: |
-          $msiFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi" | Select-Object -First 1
-          $sigFile = Get-ChildItem "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.sig" | Select-Object -First 1
+          # 获取版本号（支持两种格式：v1.0.0 或 1.0.0）
+          $version = $env:GITHUB_REF -replace 'refs/tags/v?', ''
+
+          # 定位构建产物
+          $msiFile = Get-ChildItem "src-tauri/target/release-bundle/*.msi" | Select-Object -First 1
+          $sigFile = Get-ChildItem "src-tauri/target/release-bundle/*.sig" | Select-Object -First 1
 
           if (-not $msiFile -or -not $sigFile) {
-            Write-Error "##[error] 构建产物缺失"
-            exit 1
+              Write-Error "##[error] 构建产物未找到"
+              Write-Output "可用文件："
+              Get-ChildItem "src-tauri/target/release-bundle" | Out-Host
+              exit 1
           }
 
-          $manifest = [PSCustomObject]@{
-            version = $env:VERSION
-            platforms = @{
-              "windows-x86_64" = @{
-                signature = (Get-Content $sigFile.FullName -Raw).Trim()
-                url = "https://github.com/chatterjay/font/releases/download/v$env:VERSION/$($msiFile.Name)"
+          # 生成更新清单
+          [PSCustomObject]@{
+              version = $version
+              notes = "Auto-generated release"
+              pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+              platforms = @{
+                  "windows-x86_64" = @{
+                      signature = (Get-Content $sigFile.FullName -Raw).Trim()
+                      url = "https://github.com/chatterjay/font-viewer/releases/download/v$version/$($msiFile.Name)"
+                  }
               }
-            }
-          } | ConvertTo-Json -Depth 10
+          } | ConvertTo-Json -Depth 3 | Out-File latest.json
 
-          $manifest | Out-File "src-tauri/latest.json"
+          # 验证输出
+          Write-Output "生成的 latest.json 内容："
+          Get-Content latest.json | Out-Host
 
-      - name: Publish Release
+      # ========== 发布阶段 ==========
+      - name: Upload Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}
           files: |
-            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
-            src-tauri/latest.json
+            src-tauri/target/release-bundle/*.msi
+            latest.json
           draft: false
           overwrite: true
