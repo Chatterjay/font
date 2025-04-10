@@ -3,7 +3,7 @@ name: Windows Release
 on:
   push:
     tags:
-      - 'v*'
+      - main
 
 jobs:
   build:
@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: 18
 
-      - name: Install Rust
+      - name: install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install Tauri CLI
@@ -58,6 +58,22 @@ jobs:
 
       - name: Upload Release
         uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: ./updater/install.json
+
+  deploy-gh-pages:
+    needs: update-updater
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           files: |
             src-tauri/target/release/*.msi

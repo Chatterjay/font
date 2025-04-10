@@ -7,14 +7,11 @@ import SearchBar from "./components/SearchBar.vue";
 import ThemeToggle from "./components/ThemeToggle.vue";
 import SettingsSidebar from "./components/SettingsSidebar.vue";
 import AppActions from "./components/AppActions.vue";
-import UpdateNotifier from "./components/UpdateNotifier.vue";
 import { saveToStorage, getFromStorage } from "./utils/storage";
 import { STORAGE_KEYS, LAYOUT_MODES, APP_INFO } from "./constants/index.js";
 import { invoke } from "@tauri-apps/api/tauri";
 import BatchSelectableFontList from "./components/BatchSelectableFontList.vue";
-import UpdateNotification from "./components/UpdateNotification.vue";
 import { useRouter } from "vue-router";
-import { fetchChangelogFromUpdatePackage, fetchLatestVersion } from "./utils/updateUtils";
 
 // 导入组合式函数
 import { useFontManagement } from "./composables/useFontManagement";
@@ -119,33 +116,7 @@ onMounted(async () => {
 
 // 应用版本信息
 const appVersion = computed(() => APP_INFO.VERSION);
-
 const router = useRouter();
-const showUpdateNotification = ref(false);
-const newVersion = ref("");
-const changelog = ref([]);
-
-// 检查更新
-const checkForUpdate = async () => {
-  try {
-    // 获取版本信息
-    const versionInfo = await fetchLatestVersion(APP_INFO.VERSION);
-
-    if (versionInfo.hasUpdate) {
-      // 有更新，显示通知
-      newVersion.value = versionInfo.version;
-
-      // 获取更新日志
-      const updateChangelog = await fetchChangelogFromUpdatePackage();
-      changelog.value = updateChangelog;
-
-      // 显示更新通知
-      showUpdateNotification.value = true;
-    }
-  } catch (error) {
-    console.error("检查更新失败:", error);
-  }
-};
 </script>
 
 <template>
@@ -158,14 +129,6 @@ const checkForUpdate = async () => {
   >
     <!-- 设置侧边栏组件 -->
     <SettingsSidebar />
-
-    <!-- 更新提示组件 -->
-    <UpdateNotification
-      v-if="showUpdateNotification"
-      :current-version="APP_INFO.VERSION"
-      :new-version="newVersion"
-      :changelog="changelog"
-    />
 
     <!-- 使用路由视图 -->
     <router-view v-slot="{ Component }">

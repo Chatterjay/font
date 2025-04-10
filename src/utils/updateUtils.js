@@ -1,9 +1,6 @@
 /**
- * 更新相关工具函数
+ * 提供简单的环境检测工具函数
  */
-
-import { CHANGELOG } from '../constants/index.js';
-import { CURRENT_VERSION, formatVersion } from '../constants/version.js';
 
 /**
  * 检查是否为生产环境

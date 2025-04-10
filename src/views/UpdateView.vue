@@ -71,10 +71,6 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
-import { 
-  fetchLatestVersion, 
-  fetchChangelogFromUpdatePackage 
-} from '../utils/updateUtils';
 import { APP_INITIAL_VERSION } from '../constants';
 
 // 更新状态
@@ -84,8 +80,18 @@ const state = reactive({
   completed: false,
   errorMessage: '',
   currentVersion: APP_INITIAL_VERSION,
-  newVersion: '',
-  changelog: []
+  newVersion: 'v1.2.0', // 模拟版本
+  changelog: [
+    {
+      version: 'v1.2.0',
+      date: '2023-12-25',
+      changes: [
+        { type: 'feature', text: '添加新的字体过滤功能' },
+        { type: 'improvement', text: '优化了字体预览性能' },
+        { type: 'fix', text: '修复了收藏夹显示问题' }
+      ]
+    }
+  ]
 });
 
 // 计算进度条函数
@@ -114,18 +120,6 @@ const simulateUpdate = async () => {
     updateProgress(10, '正在检查更新...');
     await new Promise(resolve => setTimeout(resolve, 800));
     
-    // 步骤2: 获取版本信息
-    const versionInfo = await fetchLatestVersion(state.currentVersion);
-    state.newVersion = versionInfo.version;
-    
-    if (!versionInfo.hasUpdate) {
-      // 无需更新
-      state.completed = true;
-      state.progress = 100;
-      state.statusText = '当前已是最新版本';
-      return;
-    }
-    
     // 步骤3: 下载更新
     updateProgress(30, '正在下载更新...');
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -140,8 +134,7 @@ const simulateUpdate = async () => {
     
     // 步骤6: 获取更新日志
     updateProgress(90, '正在获取更新日志...');
-    const changelog = await fetchChangelogFromUpdatePackage();
-    state.changelog = changelog;
+    await new Promise(resolve => setTimeout(resolve, 800));
     
     // 完成更新
     updateProgress(100, '更新完成');
@@ -156,7 +149,6 @@ const simulateUpdate = async () => {
 // 重启应用
 const restart = () => {
   // 在实际应用中，这里应调用Tauri API重启应用
-  // 例如: invoke('plugin:app|restart')
   alert('应用将重新启动以完成更新');
   window.location.reload();
 };

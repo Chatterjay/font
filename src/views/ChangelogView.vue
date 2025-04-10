@@ -129,7 +129,6 @@
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { CHANGELOG, APP_INFO } from '../constants/index';
-import { fetchChangelogFromUpdatePackage } from '../utils/updateUtils';
 
 // 路由实例
 const router = useRouter();
@@ -152,13 +151,12 @@ const goBack = () => {
 // 获取更新日志
 const loadChangelog = async () => {
   try {
-    // 首先检查全局常量中是否已有更新日志
+    // 使用全局常量中的更新日志
     if (CHANGELOG && CHANGELOG.length > 0) {
       changelog.value = CHANGELOG;
     } else {
-      // 如果没有，则尝试从更新包中获取
-      const fetchedChangelog = await fetchChangelogFromUpdatePackage();
-      changelog.value = fetchedChangelog;
+      // 如果没有，则使用空数组
+      changelog.value = [];
     }
   } catch (error) {
     console.error('加载更新日志失败:', error);
