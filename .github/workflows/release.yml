@@ -1,18 +1,19 @@
-name: Windows Build & Release
+name: Windows Build & AutoUpdate
 
 on:
   push:
-      branches: [ main ]
+    tags:
+      - 'v*'
 
 jobs:
-  build-and-publish:
+  build-sign-release:
     runs-on: windows-latest
     permissions:
       contents: write
 
     steps:
       # ========== 初始化阶段 ==========
-      - name: Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       # ========== 环境配置 ==========
@@ -22,29 +23,33 @@ jobs:
           node-version: 18
           cache: 'npm'
 
-      - name: Install Rust
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: stable
           targets: x86_64-pc-windows-msvc
 
-      # ========== 智能缓存清理 ==========
-      - name: Clean workspace
+      # ========== 安全清理 ==========
+      - name: Clean build environment
         shell: pwsh
         run: |
-          # 仅在存在 Cargo.toml 时清理
+          # 选择性清理 Rust 缓存
           if (Test-Path src-tauri/Cargo.toml) {
               cd src-tauri
               cargo clean
-              # 安全清理缓存目录
-              $cargoPaths = @(
-                  "$env:USERPROFILE\.cargo\registry",
-                  "$env:USERPROFILE\.cargo\git"
-              )
-              foreach ($path in $cargoPaths) {
-                  if (Test-Path $path) {
-                      Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
-                  }
+              if (Test-Path Cargo.lock) { Remove-Item Cargo.lock }
+              cargo generate-lockfile
+              cd ..
+          }
+
+          # 清理全局缓存（带存在性检查）
+          $cargoPaths = @(
+              "$env:USERPROFILE\.cargo\registry",
+              "$env:USERPROFILE\.cargo\git"
+          )
+          foreach ($path in $cargoPaths) {
+              if (Test-Path $path) {
+                  Remove-Item $path -Recurse -Force -ErrorAction SilentlyContinue
               }
           }
 
@@ -56,46 +61,64 @@ jobs:
         run: |
           npm install
           cd src-tauri
-          # 强制重新生成锁文件
-          if (Test-Path Cargo.lock) { Remove-Item Cargo.lock }
           cargo generate-lockfile
           cd ..
 
-      # ========== 构建阶段 ==========
+      # ========== 签名构建 ==========
       - name: Build signed MSI
         shell: pwsh
         run: |
           cd src-tauri
           npm run tauri build -- --target x86_64-pc-windows-msvc
+          if (-not (Test-Path target/release/*.msi)) {
+              Write-Error "MSI 文件生成失败"
+              exit 1
+          }
         env:
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
       # ========== 生成更新清单 ==========
-      - name: Generate latest.json
+      - name: Generate update manifest
         shell: pwsh
         run: |
+          # 动态获取版本号
           $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          $msiPath = Get-Item "src-tauri/target/release/*.msi"
-          $msiName = $msiPath.Name
-          
-          # 自动获取签名内容
-          $sigContent = Get-Content "$($msiPath.FullName).sig" -Raw
 
-          [ordered]@{
-            version = $version
-            notes = "Auto-generated release"
-            pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
-            platforms = @{
-              "windows-x86_64" = @{
-                signature = $sigContent.Trim()
-                url = "https://github.com/chatterjay/font-viewer/releases/download/v$version/$msiName"
+          # 获取 MSI 文件路径
+          $msiPath = Get-Item "src-tauri/target/release/*.msi" | Select-Object -First 1
+          if (-not $msiPath) {
+              Write-Error "未找到 MSI 文件"
+              exit 1
+          }
+
+          # 验证签名文件存在
+          $sigPath = "$($msiPath.FullName).sig"
+          if (-not (Test-Path $sigPath)) {
+              Write-Error "签名文件缺失: $sigPath"
+              Get-ChildItem "src-tauri/target/release/" | Out-Host
+              exit 1
+          }
+
+          # 生成 JSON 文件
+          $sigContent = (Get-Content $sigPath -Raw).Trim()
+          [PSCustomObject]@{
+              version = $version
+              notes = "Auto-generated release"
+              pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+              platforms = @{
+                  "windows-x86_64" = @{
+                      signature = $sigContent
+                      url = "https://github.com/chatterjay/font/releases/download/v$version/$($msiPath.Name)"
+                  }
               }
-            }
           } | ConvertTo-Json -Depth 3 | Out-File -Encoding utf8 latest.json
 
-      # ========== 发布到 GitHub Releases ==========
-      - name: Upload Release
+          # 验证生成结果
+          Get-Content latest.json | Out-Host
+
+      # ========== 发布版本 ==========
+      - name: Upload release assets
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ github.ref_name }}

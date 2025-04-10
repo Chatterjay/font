@@ -56,12 +56,12 @@
     "security": {
       "csp": null
     },
-   "updater": {
-    "active": true,
-    "endpoints": [
-      "https://github.com/chatterjay/font-viewer/releases/latest/download/latest.json"
-    ],
-    "dialog": true,
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://github.com/chatterjay/font/releases/latest/download/latest.json"
+      ],
+      "dialog": true,
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU0ODdDMzA4NkY3QzVCQzQKUldURVczeHZDTU9INUdrTFdmUVVBL2RoSHF3d1QwWVlFL2x4YVZJTUJGYzBRTUkxcEQ2VEJGSHQK",
       "windows": {
         "installMode": "passive"
