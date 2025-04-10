@@ -2,80 +2,71 @@ name: Windows Release
 
 on:
   push:
-    branches:
-      - main
+      branches: [ main ]
 
 jobs:
-  build:
+  build-and-sign:
     runs-on: windows-latest
     permissions:
-      contents: write  # 允许上传 Release 文件
+      contents: write  # 需要权限上传 Release 文件
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 18
 
-      - name: install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@stable
 
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
+    - name: Install Tauri CLI
+      run: npm install -g @tauri-apps/cli
 
-      - name: Install Dependencies
-        run: npm install
+    - name: Install dependencies
+      run: npm install
 
-      - name: Build Windows MSI
-        run: npm run tauri build -- --target x86_64-pc-windows-msvc
-        env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+    - name: Build Windows MSI
+      run: npm run tauri build -- --target x86_64-pc-windows-msvc
+      env:
+        TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+        TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
 
-      - name: Upload Artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: windows-release
-          path: src-tauri/target/release/*.msi
-
-      - name: Generate latest.json
-        run: |
-          $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          $json = @{
-            version = "$version"
-            notes = "Auto-generated release"
-            pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
-            platforms = @{
-              "windows-x86_64" = @{
-                signature = (Get-Content *.msi.sig)
-                url = "https://github.com/chatterjay/font-viewer/releases/download/v$version/your-app_${version}_x64.msi"
-              }
+    - name: Generate latest.json
+      run: |
+        $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
+        $sigContent = Get-Content src-tauri/target/release/*.msi.sig
+        $json = @{
+          version = "$version"
+          notes = "Auto-generated release"
+          pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+          platforms = @{
+            "windows-x86_64" = @{
+              signature = "$sigContent"
+              url = "https://github.com/chatterjay/font-viewer/releases/download/v$version/font-viewer_${version}_x64_en-US.msi"
             }
           }
-          ConvertTo-Json $json -Depth 3 | Out-File -Encoding utf8 latest.json
+        }
+        ConvertTo-Json $json -Depth 3 | Out-File -Encoding utf8 latest.json
 
-      - name: Upload Release
-        uses: softprops/action-gh-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: ./updater/install.json
+    - name: Upload Release Assets
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          src-tauri/target/release/*.msi
+          latest.json
+        draft: false
+        tag_name: ${{ github.ref_name }}
 
+  # 部署到 GitHub Pages 的作业（如果需要）
   deploy-gh-pages:
-    needs: update-updater
-    permissions:
-      contents: write
+    needs: build-and-sign  # 正确关联依赖的作业名
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          files: |
-            src-tauri/target/release/*.msi
-            latest.json
-          draft: false
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./path/to/dist
