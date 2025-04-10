@@ -1,174 +1,65 @@
-name: Release
+name: Windows Release
 
 on:
   push:
-    branches:
-      - main
-      - master
-      - main
-      - master
+    tags:
+      - 'v*'
 
-# 添加权限配置
-permissions:
-  contents: write
-  
 jobs:
-  release:
+  build:
     runs-on: windows-latest
+    permissions:
+      contents: write  # 允许上传 Release 文件
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Install Node.js
-        uses: actions/setup-node@v3
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
-          cache: 'npm'
+          node-version: 18
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: stable
 
-      - name: Install dependencies (Rust)
-        run: rustup target add x86_64-pc-windows-msvc
-        
-      - name: Install dependencies (Node)
-        run: npm ci
-        
-      - name: Get package version
-        id: package_version
-        run: echo "version=$(node -p "require('./package.json').version")" >> $env:GITHUB_OUTPUT
-        shell: pwsh
-        
-      # 提取最近的提交信息，用作更新说明
-      - name: Get recent commits for changelog
-        id: recent_commits
-        shell: pwsh
-        run: |
-          $commits = git log -5 --pretty=format:"- %s (%h)" --abbrev-commit
-          $commits = $commits -join "\n"
-          echo "changelog<<EOF" >> $env:GITHUB_OUTPUT
-          echo "$commits" >> $env:GITHUB_OUTPUT
-          echo "EOF" >> $env:GITHUB_OUTPUT
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli
 
-      # 构建应用程序
-      # 构建应用程序
-      - name: Build Tauri App
-        id: tauri
-        uses: tauri-apps/tauri-action@v0
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Windows MSI
+        run: npm run tauri build -- --target x86_64-pc-windows-msvc
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
         with:
-          tagName: v${{ steps.package_version.outputs.version }}
-          releaseName: Font Viewer v${{ steps.package_version.outputs.version }}
-          tagName: v${{ steps.package_version.outputs.version }}
-          releaseName: Font Viewer v${{ steps.package_version.outputs.version }}
-          releaseBody: |
-            ## 系统字体查看器 v${{ steps.package_version.outputs.version }}
-            
-            ### 更新内容:
-            ${{ steps.recent_commits.outputs.changelog }}
-            
-            构建时间: ${{ github.event.repository.updated_at }}
-            提交SHA: ${{ github.sha }}
-          releaseDraft: false
-          prerelease: false
+          name: windows-release
+          path: src-tauri/target/release/*.msi
 
-      # 生成更新元数据
-
-      # 生成更新元数据
-      - name: Generate update metadata
-        id: generate_metadata
-        id: generate_metadata
-        shell: pwsh
+      - name: Generate latest.json
         run: |
-          $version = "${{ steps.package_version.outputs.version }}"
-          $releaseTag = "v$version"
-          $releaseTag = "v$version"
-          
-          # 创建更新说明
-          $notes = @"
-          # 创建更新说明
-          $notes = @"
-          ## 系统字体查看器 v$version
-          
-          ### 更新内容:
-          ${{ steps.recent_commits.outputs.changelog }}
-          "@
-          
-          # 获取当前时间为RFC 3339格式
-          $pubDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
-          
-          # 创建基础元数据
-          $metadata = @{
+          $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
+          $json = @{
             version = "$version"
-            notes = $notes
-            pub_date = $pubDate
+            notes = "Auto-generated release"
+            pub_date = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
             platforms = @{
               "windows-x86_64" = @{
-                url = "https://github.com/Chatterjay/font-viewer/releases/download/$releaseTag/Font-Viewer_${version}_x64_en-US.msi"
-                signature = ""
+                signature = (Get-Content *.msi.sig)
+                url = "https://github.com/chatterjay/font-viewer/releases/download/v$version/your-app_${version}_x64.msi"
               }
             }
           }
-          
-          # 保存元数据到临时文件
-          $metadataJson = ConvertTo-Json -InputObject $metadata -Depth 10
-          $metadataJson | Set-Content -Path updater.json -Encoding UTF8
-          
-          # 将元数据路径保存为输出变量
-          echo "metadata_path=updater.json" >> $env:GITHUB_OUTPUT
+          ConvertTo-Json $json -Depth 3 | Out-File -Encoding utf8 latest.json
 
-      # 签名元数据文件
-      - name: Sign update metadata
-        id: sign_metadata
-        shell: pwsh
-        run: |
-          # 安装Tauri CLI
-          npm install -g @tauri-apps/cli
-          
-          # 保存私钥到临时文件
-          $env:TAURI_PRIVATE_KEY | Out-File -FilePath private.key
-          
-          # 从元数据文件中获取MSI URL
-          $metadata = Get-Content -Path updater.json | ConvertFrom-Json
-          $msiUrl = $metadata.platforms.'windows-x86_64'.url
-          
-          # 下载MSI文件
-          $msiFileName = Split-Path -Path $msiUrl -Leaf
-          Invoke-WebRequest -Uri $msiUrl -OutFile $msiFileName
-          
-          # 使用Tauri CLI签名MSI文件
-          $signature = npx --yes tauri signer sign --key private.key --password "$env:TAURI_KEY_PASSWORD" $msiFileName
-          
-          # 更新元数据中的签名
-          $metadata.platforms.'windows-x86_64'.signature = $signature
-          
-          # 保存更新后的元数据
-          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path updater.json -Encoding UTF8
-          ConvertTo-Json -InputObject $metadata -Depth 10 | Set-Content -Path latest-version.json -Encoding UTF8
-          
-          # 删除临时文件
-          Remove-Item -Path private.key -Force
-          Remove-Item -Path $msiFileName -Force
-        env:
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-
-      # 上传签名后的元数据文件
-      - name: Upload update metadata
+      - name: Upload Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ steps.package_version.outputs.version }}
-          tag_name: v${{ steps.package_version.outputs.version }}
           files: |
-            updater.json
-            updater.json
-            latest-version.json
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
+            src-tauri/target/release/*.msi
+            latest.json
+          draft: false
