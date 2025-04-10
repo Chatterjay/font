@@ -2,8 +2,9 @@ name: Windows Build & AutoUpdate
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+       - main
+       - release-*
 
 jobs:
   build-sign-release:
